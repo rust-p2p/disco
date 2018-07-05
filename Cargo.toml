@@ -1,0 +1,8 @@
+[package]
+name = "disco-rs"
+version = "0.1.0"
+authors = ["Michael Rosenberg <micro@fastmail.com>"]
+
+[dependencies]
+rand = "0.5"
+strobe-rs = "0.3"
