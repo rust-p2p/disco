@@ -1,7 +1,10 @@
 [package]
 name = "disco-rs"
+description = "An implementation of the Disco cryptographic protocol framework in pure Rust"
 version = "0.1.0"
 authors = ["Michael Rosenberg <micro@fastmail.com>"]
+license = "MIT/Apache-2.0"
+keywords = ["crypto", "strobe", "disco", "protocol", "framework"]
 
 [dependencies]
 rand = "0.5"
