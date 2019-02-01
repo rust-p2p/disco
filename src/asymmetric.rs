@@ -3,13 +3,13 @@ use rand::{thread_rng, RngCore};
 use x25519_dalek;
 
 /// A constant specifying the size in bytes of public keys and DH outputs. For security reasons,
-/// DH_LEN must be 32 or greater.
-pub const DH_LEN: usize = 32;
+/// DH_SIZE must be 32 or greater.
+pub const DH_SIZE: usize = 32;
 
 /// Contains a private and a public part. It can be generated via the `gen` or `from_priv_key`
 /// functions. The public part can also be extracted via the `pub_key_bytes` function.
 pub struct KeyPair {
-    pub_key: MontgomeryPoint,
+    pub(crate) pub_key: MontgomeryPoint,
     priv_key: [u8; 32],
 }
 
@@ -29,13 +29,13 @@ impl KeyPair {
     }
 
     /// Dumps the bytes of this keypair's public key.
-    pub fn pub_key_bytes(&self) -> &[u8; DH_LEN] {
+    pub fn pub_key_bytes(&self) -> &[u8; DH_SIZE] {
         self.pub_key.as_bytes()
     }
 }
 
 /// Performs a Diffie-Hellman exchange with the given private key and public key. Returns the byte
 /// representation of the resulting point.
-pub fn dh(key_pair: &KeyPair, pub_key: &[u8; DH_LEN]) -> [u8; DH_LEN] {
+pub fn dh(key_pair: &KeyPair, pub_key: &[u8; DH_SIZE]) -> [u8; DH_SIZE] {
     x25519_dalek::diffie_hellman(&key_pair.priv_key, pub_key)
 }

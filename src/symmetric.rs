@@ -2,8 +2,8 @@ use rand::{thread_rng, RngCore};
 use strobe_rs::{SecParam, Strobe};
 pub use strobe_rs::AuthError;
 
-const NONCE_SIZE: usize = 192 / 8;
-const TAG_SIZE: usize = 16;
+pub const NONCE_SIZE: usize = 192 / 8;
+pub(crate) const TAG_SIZE: usize = 16;
 const ERR_KEY_TOO_SHORT: &'static str =
     "disco: using a key smaller than 128-bit (16 bytes) has security consequences";
 

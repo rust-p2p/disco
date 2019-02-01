@@ -10,6 +10,7 @@ keywords = ["crypto", "strobe", "disco", "protocol", "framework"]
 curve25519-dalek = "0.17" # Version required by x25519-dalek
 rand = "0.5"
 strobe-rs = "0.3"
+take_mut = "0.2"
 
 [dependencies.x25519-dalek]
 version = "0.2"
