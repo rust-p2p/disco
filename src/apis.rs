@@ -86,10 +86,13 @@ struct Session<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> {
 }
 
 impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
-    pub fn read_message(&mut self, input: Vec<u8>) -> Result<Vec<u8>, DiscoReadError> {
+    pub fn read_message(&mut self, mut input: Vec<u8>) -> Result<Vec<u8>, DiscoReadError> {
         let mut just_completed_handshake = false;
         let res = match self.state {
-            SessionState::Transport(ref mut rx, _) => rx.recv_enc(input, None, false),
+            SessionState::Transport(ref mut rx, _) => {
+                rx.recv_enc(&mut input, false);
+                input
+            },
             SessionState::Handshake(ref mut hs_st) => {
                 let (out, done) = hs_st.read_msg(input)?;
                 just_completed_handshake = done;
@@ -104,10 +107,13 @@ impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
         Ok(res)
     }
 
-    pub fn write_message(&mut self, payload: Vec<u8>) -> Result<Vec<u8>, DiscoWriteError> {
+    pub fn write_message(&mut self, mut payload: Vec<u8>) -> Result<Vec<u8>, DiscoWriteError> {
         let mut just_completed_handshake = false;
         let payload = match self.state {
-            SessionState::Transport(_, ref mut tx) => tx.send_enc(payload, None, false),
+            SessionState::Transport(_, ref mut tx) => {
+                tx.send_enc(&mut payload, false);
+                payload
+            },
             SessionState::Handshake(ref mut hs_st) => {
                 let (out, done) = hs_st.write_msg(payload)?;
                 just_completed_handshake = done;
@@ -124,7 +130,7 @@ impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
 
     pub fn rekey_rx(&mut self) {
         if let SessionState::Transport(ref mut rx, _) = self.state {
-            rx.ratchet(16, None, false);
+            rx.ratchet(16, false);
         } else {
             panic!("disco: Attempted to re-key before handshake was finished");
         }
@@ -132,7 +138,7 @@ impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
 
     pub fn rekey_tx(&mut self) {
         if let SessionState::Transport(_, ref mut tx) = self.state {
-            tx.ratchet(16, None, false);
+            tx.ratchet(16, false);
         } else {
             panic!("disco: Attempted to re-key before handshake was finished");
         }

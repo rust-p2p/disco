@@ -35,7 +35,7 @@ impl iter::IntoIterator for DiscoAuthCiphertext {
 impl SymmetricState {
     pub fn new(proto: Vec<u8>) -> SymmetricState {
         SymmetricState {
-            strobe_state: Strobe::new(proto, SecParam::B128),
+            strobe_state: Strobe::new(&proto, SecParam::B128),
             is_keyed: false,
         }
     }
@@ -46,23 +46,26 @@ impl SymmetricState {
     }
 
     pub fn mix_hash(&mut self, data: Vec<u8>) {
-        self.strobe_state.ad(data, None, false);
+        self.strobe_state.ad(&data, false);
     }
 
     pub fn mix_key_and_hash(&mut self, input_key_material: &[u8; KEY_SIZE]) {
         self.strobe_state
-            .ad(input_key_material.to_vec(), None, false);
+            .ad(&input_key_material[..], false);
     }
 
     pub fn get_handshake_hash(&mut self) -> Vec<u8> {
-        self.strobe_state.prf(KEY_SIZE, None, false)
+        let mut buf = vec![0u8; KEY_SIZE];
+        self.strobe_state.prf(&mut buf, false);
+        buf
     }
 
-    fn encrypt_and_hash(&mut self, plaintext: Vec<u8>) -> Vec<u8> {
+    fn encrypt_and_hash(&mut self, mut plaintext: Vec<u8>) -> Vec<u8> {
         if self.is_keyed {
-            let mac = self.strobe_state.send_enc(plaintext, None, false);
-            let ct = self.strobe_state.send_mac(TAG_SIZE, None, false);
-            [mac, ct].concat()
+            self.strobe_state.send_enc(&mut plaintext, false);
+            let mut mac = vec![0u8; TAG_SIZE];
+            self.strobe_state.send_mac(&mut mac, false);
+            [mac, plaintext].concat()
         } else {
             plaintext
         }
@@ -72,16 +75,14 @@ impl SymmetricState {
     /// is keyed and the MAC does not pass verification.
     fn decrypt_and_hash(&mut self, mut bytes: Vec<u8>) -> Result<Vec<u8>, AuthError> {
         if self.is_keyed {
-            if bytes.len() < TAG_SIZE {
-                panic!("decrypt_and_hash input too short");
-            }
+            assert!(bytes.len() >= TAG_SIZE);
             let tmp = bytes.split_off(TAG_SIZE);
-            let mac = bytes;
-            let ct = tmp;
-
-            let plaintext = self.strobe_state.recv_enc(ct, None, false);
-            match self.strobe_state.recv_mac(mac, None, false) {
-                Ok(_) => Ok(plaintext),
+            let mut mac = bytes;
+            let mut ct = tmp;
+            
+            self.strobe_state.recv_enc(&mut ct, false);
+            match self.strobe_state.recv_mac(&mut mac, false) {
+                Ok(_) => Ok(ct),
                 Err(e) => Err(e),
             }
         } else {
@@ -91,12 +92,12 @@ impl SymmetricState {
 
     fn split(self) -> (Strobe, Strobe) {
         let mut s1 = self.strobe_state.clone();
-        s1.ad(b"initiator".to_vec(), None, false);
-        s1.ratchet(KEY_SIZE, None, false);
+        s1.ad(b"initiator", false);
+        s1.ratchet(KEY_SIZE, false);
 
         let mut s2 = self.strobe_state;
-        s2.ad(b"responder".to_vec(), None, false);
-        s2.ratchet(KEY_SIZE, None, false);
+        s2.ad(b"responder", false);
+        s2.ratchet(KEY_SIZE, false);
 
         (s1, s2)
     }

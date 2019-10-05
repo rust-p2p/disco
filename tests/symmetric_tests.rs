@@ -5,7 +5,7 @@ use disco_rs::symmetric::{self, AuthCiphertext, AuthPlaintext, DiscoHash};
 
 #[test]
 fn test_known_hash() {
-    let input = b"hi, how are you?".to_vec();
+    let input = b"hi, how are you?";
     let hash = symmetric::hash(input, 32);
     let expected_hash = [
         0xed, 0xa8, 0x50, 0x6c, 0x1f, 0xb0, 0xbb, 0xcc, 0x3f, 0x62, 0x62, 0x6f, 0xef, 0x07, 0x4b,
@@ -18,7 +18,7 @@ fn test_known_hash() {
 
 #[test]
 fn test_known_derive_keys() {
-    let input = b"hi, how are you?".to_vec();
+    let input = b"hi, how are you?";
     let key = symmetric::derive_keys(input, 64);
     let expected_key = [
         0xd6, 0x35, 0x0b, 0xb9, 0xb8, 0x38, 0x84, 0x77, 0x4f, 0xb9, 0xb0, 0x88, 0x16, 0x80, 0xfc,
@@ -33,33 +33,33 @@ fn test_known_derive_keys() {
 
 #[test]
 fn test_streaming_sum() {
-    let msg1 = b"hello".to_vec();
-    let msg2 = b"how are you good sir?".to_vec();
-    let msg3 = b"sure thing".to_vec();
-    let msg1c2 = [msg1.clone(), msg2.clone()].concat();
+    let msg1 = b"hello";
+    let msg2 = b"how are you good sir?";
+    let msg3 = b"sure thing";
+    let msg1c2 = [msg1.to_vec(), msg2.to_vec()].concat();
 
     // Try with DiscoHash with and without streaming
     let mut h1 = DiscoHash::new(32);
-    h1.write(msg1.clone());
-    h1.write(msg2.clone());
+    h1.write(msg1);
+    h1.write(msg2);
     let out1 = h1.clone().sum();
 
     let mut h2 = DiscoHash::new(32);
-    h2.write(msg1c2.clone());
+    h2.write(&msg1c2);
     let out2 = h2.clone().sum();
 
     assert_eq!(out1, out2);
 
     // Try streaming more
-    h1.write(msg3.clone());
+    h1.write(msg3);
     let out1 = h1.sum();
-    h2.write(msg3.clone());
+    h2.write(msg3);
     let out2 = h2.sum();
 
     assert_eq!(out1, out2);
 
     // Now check that this agrees with symmetric::hash
-    let out3 = symmetric::hash([msg1c2, msg3].concat(), 32);
+    let out3 = symmetric::hash(&[msg1c2, msg3.to_vec()].concat(), 32);
     assert_eq!(out1, out3);
 }
 
@@ -71,7 +71,7 @@ fn test_nonce_size() {
         0x0f, 0x75,
     ];
     let plaintext = b"hello, how are you?".to_vec();
-    let ciphertext = symmetric::encrypt(key, plaintext);
+    let ciphertext = symmetric::encrypt(&key, plaintext);
 
     assert_eq!(ciphertext.into_bytes().len(), 19+16+24);
 }
@@ -84,8 +84,8 @@ fn test_integrity_correctness() {
         0x0f, 0x75,
     ];
     let msg = b"hoy, how are you?".to_vec();
-    let boxed_pt = symmetric::protect_integrity(key.clone(), msg.clone());
-    let unboxed_pt = symmetric::verify_integrity(key, boxed_pt).expect("verify_integrity failed");
+    let boxed_pt = symmetric::protect_integrity(&key, msg.clone());
+    let unboxed_pt = symmetric::verify_integrity(&key, boxed_pt).expect("verify_integrity failed");
 
     assert_eq!(unboxed_pt, msg);
 }
@@ -111,8 +111,8 @@ fn test_encryption_correctness() {
     ];
 
     for pt in plaintexts.into_iter().map(|s| s.to_vec()) {
-        let auth_ct = symmetric::encrypt(key.clone(), pt.clone());
-        let decrypted = symmetric::decrypt(key.clone(), auth_ct).expect("decrypt auth failed");
+        let auth_ct = symmetric::encrypt(&key, pt.clone());
+        let decrypted = symmetric::decrypt(&key, auth_ct).expect("decrypt auth failed");
         assert_eq!(decrypted, pt);
     }
 }
