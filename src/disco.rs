@@ -74,7 +74,9 @@ impl SymmetricState {
     /// is keyed and the MAC does not pass verification.
     fn decrypt_and_hash(&mut self, mut bytes: Vec<u8>) -> Result<Vec<u8>, AuthError> {
         if self.is_keyed {
-            assert!(bytes.len() >= TAG_SIZE);
+            if bytes.len() < TAG_SIZE {
+                return Err(AuthError);
+            }
             let tmp = bytes.split_off(TAG_SIZE);
             let mut mac = bytes;
             let mut ct = tmp;
