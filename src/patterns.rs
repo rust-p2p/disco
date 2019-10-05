@@ -20,18 +20,17 @@ impl fmt::Debug for Token {
         use self::Token::*;
 
         let tok_s = match self {
-            &E   => "e",
-            &S   => "s",
-            &ES  => "es",
-            &SE  => "se",
-            &SS  => "ss",
-            &EE  => "ee",
-            &Psk => "psk"
+            &E => "e",
+            &S => "s",
+            &ES => "es",
+            &SE => "se",
+            &SS => "ss",
+            &EE => "ee",
+            &Psk => "psk",
         };
         f.write_str(tok_s)
     }
 }
-
 
 pub(crate) type MessagePattern = &'static [Token];
 
@@ -58,10 +57,7 @@ pub const NOISE_N: HandshakePattern = HandshakePattern {
         initiator: &[],
         responder: &[Token::S],
     },
-    message_pats: &[
-        &[Token::E, Token::ES],
-        &[],
-    ],
+    message_pats: &[&[Token::E, Token::ES], &[]],
 };
 
 /// A one-way pattern where a client can send data to a server with a known static key. The server
@@ -73,10 +69,7 @@ pub const NOISE_K: HandshakePattern = HandshakePattern {
         initiator: &[Token::S],
         responder: &[Token::S],
     },
-    message_pats: &[
-        &[Token::E, Token::ES, Token::SS],
-        &[],
-    ],
+    message_pats: &[&[Token::E, Token::ES, Token::SS], &[]],
 };
 
 /// A one-way pattern where a client can send data to a server with a known static key. The server
@@ -88,10 +81,7 @@ pub const NOISE_X: HandshakePattern = HandshakePattern {
         initiator: &[],
         responder: &[Token::S],
     },
-    message_pats: &[
-        &[Token::E, Token::ES, Token::S, Token::SS],
-        &[],
-    ],
+    message_pats: &[&[Token::E, Token::ES, Token::S, Token::SS], &[]],
 };
 
 // 7.3 - Interactive pats

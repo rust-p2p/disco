@@ -1,6 +1,6 @@
 use rand::{thread_rng, RngCore};
-use strobe_rs::{SecParam, Strobe};
 pub use strobe_rs::AuthError;
+use strobe_rs::{SecParam, Strobe};
 
 pub const NONCE_SIZE: usize = 192 / 8;
 pub(crate) const TAG_SIZE: usize = 16;
@@ -29,8 +29,7 @@ impl AuthPlaintext {
     pub fn from_bytes(mut bytes: Vec<u8>) -> Option<AuthPlaintext> {
         if bytes.len() < TAG_SIZE {
             None
-        }
-        else {
+        } else {
             // Interpret the input as mac || pt
             let pt = bytes.split_off(TAG_SIZE);
             let mac = bytes;
@@ -65,8 +64,7 @@ impl AuthCiphertext {
     pub fn from_bytes(mut bytes: Vec<u8>) -> Option<AuthCiphertext> {
         if bytes.len() < TAG_SIZE + NONCE_SIZE {
             None
-        }
-        else {
+        } else {
             // Interpret the input as mac || nonce || ct
             let mut rest = bytes.split_off(TAG_SIZE);
             let mac = bytes;
@@ -191,14 +189,14 @@ pub fn verify_integrity(key: &[u8], input: AuthPlaintext) -> Result<Vec<u8>, Aut
 
     match s.recv_mac(&mut mac, false) {
         Ok(_) => Ok(pt),
-        Err(ae) => Err(ae)
+        Err(ae) => Err(ae),
     }
 }
 
 /// Encrypts and MACs a plaintext message with a key of any size greater than 128 bits (16 bytes).
 pub fn encrypt(key: &[u8], mut plaintext: Vec<u8>) -> AuthCiphertext {
     assert!(key.len() >= 16);
-    
+
     let mut s = Strobe::new(b"DiscoAEAD", SecParam::B128);
 
     // Absorb the key
@@ -214,7 +212,11 @@ pub fn encrypt(key: &[u8], mut plaintext: Vec<u8>) -> AuthCiphertext {
     let mut mac = vec![0u8; TAG_SIZE];
     s.send_mac(&mut mac, false);
 
-    AuthCiphertext { mac, nonce, ct: plaintext }
+    AuthCiphertext {
+        mac,
+        nonce,
+        ct: plaintext,
+    }
 }
 
 /// Decrypts and checks the MAC of an [`AuthCiphertext`](struct.AuthCiphertext.html) object, given
@@ -222,7 +224,11 @@ pub fn encrypt(key: &[u8], mut plaintext: Vec<u8>) -> AuthCiphertext {
 pub fn decrypt(key: &[u8], ciphertext: AuthCiphertext) -> Result<Vec<u8>, AuthError> {
     assert!(key.len() >= 16);
 
-    let AuthCiphertext { mut mac, nonce, mut ct } = ciphertext;
+    let AuthCiphertext {
+        mut mac,
+        nonce,
+        mut ct,
+    } = ciphertext;
     let mut s = Strobe::new(b"DiscoAEAD", SecParam::B128);
 
     // Absorb the key and nonce

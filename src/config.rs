@@ -1,4 +1,4 @@
-use asymmetric::{DH_SIZE, KeyPair};
+use asymmetric::{KeyPair, DH_SIZE};
 use disco::KEY_SIZE;
 use patterns::HandshakePattern;
 

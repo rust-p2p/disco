@@ -73,7 +73,7 @@ fn test_nonce_size() {
     let plaintext = b"hello, how are you?".to_vec();
     let ciphertext = symmetric::encrypt(&key, plaintext);
 
-    assert_eq!(ciphertext.into_bytes().len(), 19+16+24);
+    assert_eq!(ciphertext.into_bytes().len(), 19 + 16 + 24);
 }
 
 #[test]
@@ -122,6 +122,16 @@ fn test_encryption_correctness() {
 fn test_serialization_correctness() {
     let bytes = [[1u8; 8], [2u8; 8], [3u8; 8], [4u8; 8], [5u8; 8], [6u8; 8]].concat();
 
-    assert_eq!(AuthPlaintext::from_bytes(bytes.clone()).unwrap().into_bytes(), bytes);
-    assert_eq!(AuthCiphertext::from_bytes(bytes.clone()).unwrap().into_bytes(), bytes);
+    assert_eq!(
+        AuthPlaintext::from_bytes(bytes.clone())
+            .unwrap()
+            .into_bytes(),
+        bytes
+    );
+    assert_eq!(
+        AuthCiphertext::from_bytes(bytes.clone())
+            .unwrap()
+            .into_bytes(),
+        bytes
+    );
 }

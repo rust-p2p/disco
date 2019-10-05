@@ -3,7 +3,7 @@ use std::iter;
 use std::vec;
 
 use asymmetric::{self, KeyPair, DH_SIZE};
-use config::{NOISE_TAG_SIZE, NOISE_MAX_PLAINTEXT_SIZE};
+use config::{NOISE_MAX_PLAINTEXT_SIZE, NOISE_TAG_SIZE};
 use patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
 use strobe_rs::{AuthError, SecParam, Strobe, STROBE_VERSION};
 
@@ -50,8 +50,7 @@ impl SymmetricState {
     }
 
     pub fn mix_key_and_hash(&mut self, input_key_material: &[u8; KEY_SIZE]) {
-        self.strobe_state
-            .ad(&input_key_material[..], false);
+        self.strobe_state.ad(&input_key_material[..], false);
     }
 
     pub fn get_handshake_hash(&mut self) -> Vec<u8> {
@@ -79,7 +78,7 @@ impl SymmetricState {
             let tmp = bytes.split_off(TAG_SIZE);
             let mut mac = bytes;
             let mut ct = tmp;
-            
+
             self.strobe_state.recv_enc(&mut ct, false);
             match self.strobe_state.recv_mac(&mut mac, false) {
                 Ok(_) => Ok(ct),
@@ -157,7 +156,8 @@ impl HandshakeState {
             handshake_pat.name,
             b"_25519_STROBEv",
             STROBE_VERSION.as_bytes(),
-        ].concat();
+        ]
+        .concat();
         let mut symm_state = SymmetricState::new(proto);
         symm_state.mix_hash(prologue);
 
@@ -259,7 +259,10 @@ impl HandshakeState {
     }
 
     // Returns (payload, is_handshake_complete)
-    pub(crate) fn write_msg(&mut self, payload: Vec<u8>) -> Result<(Vec<u8>, bool), DiscoWriteError> {
+    pub(crate) fn write_msg(
+        &mut self,
+        payload: Vec<u8>,
+    ) -> Result<(Vec<u8>, bool), DiscoWriteError> {
         if !self.should_write {
             panic!("disco: Call to write_msg when it is not our turn to write");
         }
@@ -441,9 +444,10 @@ impl HandshakeState {
                     let tmp = msg.split_off(DH_SIZE + tag_size);
                     let ct = msg;
                     msg = tmp;
-                    let pt = self.symm_state
-                                 .decrypt_and_hash(ct)
-                                 .map_err(|_| DiscoReadError::AuthErr)?;
+                    let pt = self
+                        .symm_state
+                        .decrypt_and_hash(ct)
+                        .map_err(|_| DiscoReadError::AuthErr)?;
                     let mut s = [0u8; DH_SIZE];
                     s.copy_from_slice(&*pt);
                     self.remote_static_pub_key = Some(s);

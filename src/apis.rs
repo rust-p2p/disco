@@ -1,6 +1,5 @@
 /// Checks if, at some point in the protocol, the peer needs to verify the other peer static public
 /// key and if the peer needs to provide a proof for its static public key.
-
 use std::error;
 use std::fmt;
 
@@ -40,14 +39,14 @@ impl fmt::Display for ReqError {
 }
 
 fn check_requirements<F>(is_client: bool, config: &Config<F>) -> Result<(), ReqError>
-    where F: Fn(&[u8; DH_SIZE], &[u8]) -> bool
+where
+    F: Fn(&[u8; DH_SIZE], &[u8]) -> bool,
 {
     match config.handshake_pat.name {
         b"NX" | b"KX" | b"XX" | b"IX" => {
             if is_client && config.pub_key_verifier.is_none() {
                 return Err(ReqError::ErrNoPubKeyVerifier);
-            }
-            else if !is_client && config.static_pub_key_proof.is_none() {
+            } else if !is_client && config.static_pub_key_proof.is_none() {
                 return Err(ReqError::ErrNoProof);
             }
         }
@@ -55,8 +54,7 @@ fn check_requirements<F>(is_client: bool, config: &Config<F>) -> Result<(), ReqE
         b"XN" | b"XK" | b"XX" | b"X" | b"IN" | b"IK" | b"IX" => {
             if is_client && config.static_pub_key_proof.is_none() {
                 return Err(ReqError::ErrNoProof);
-            }
-            else if !is_client && config.pub_key_verifier.is_none() {
+            } else if !is_client && config.pub_key_verifier.is_none() {
                 return Err(ReqError::ErrNoPubKeyVerifier);
             }
         }
@@ -67,7 +65,10 @@ fn check_requirements<F>(is_client: bool, config: &Config<F>) -> Result<(), ReqE
             }
         }
 
-        _ => panic!("disco: unknown handshake type: {:?}", config.handshake_pat.name),
+        _ => panic!(
+            "disco: unknown handshake type: {:?}",
+            config.handshake_pat.name
+        ),
     }
 
     Ok(())
@@ -92,7 +93,7 @@ impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
             SessionState::Transport(ref mut rx, _) => {
                 rx.recv_enc(&mut input, false);
                 input
-            },
+            }
             SessionState::Handshake(ref mut hs_st) => {
                 let (out, done) = hs_st.read_msg(input)?;
                 just_completed_handshake = done;
@@ -113,7 +114,7 @@ impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
             SessionState::Transport(_, ref mut tx) => {
                 tx.send_enc(&mut payload, false);
                 payload
-            },
+            }
             SessionState::Handshake(ref mut hs_st) => {
                 let (out, done) = hs_st.write_msg(payload)?;
                 just_completed_handshake = done;
@@ -157,7 +158,7 @@ impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
                     SessionState::Transport(s_init, s_resp)
                 }
             } else {
-              st
+                st
             }
         });
     }

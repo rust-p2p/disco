@@ -38,5 +38,9 @@ impl KeyPair {
 /// representation of the resulting point.
 pub fn dh(key_pair: &KeyPair, pub_key: &[u8; DH_SIZE]) -> [u8; DH_SIZE] {
     let pub_key = PublicKey::from(pub_key.clone());
-    key_pair.priv_key.diffie_hellman(&pub_key).as_bytes().to_owned()
+    key_pair
+        .priv_key
+        .diffie_hellman(&pub_key)
+        .as_bytes()
+        .to_owned()
 }
