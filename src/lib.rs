@@ -1,4 +1,3 @@
-extern crate curve25519_dalek;
 extern crate rand;
 extern crate strobe_rs;
 extern crate take_mut;

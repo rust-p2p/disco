@@ -7,12 +7,11 @@ license = "MIT/Apache-2.0"
 keywords = ["crypto", "strobe", "disco", "protocol", "framework"]
 
 [dependencies]
-curve25519-dalek = "0.17" # Version required by x25519-dalek
-rand = "0.5"
-strobe-rs = "0.3"
-take_mut = "0.2"
+rand = "0.7.2"
+strobe-rs = "0.5.2"
+take_mut = "0.2.2"
 
 [dependencies.x25519-dalek]
-version = "0.2"
+version = "0.5.2"
 default-features = false
 features = ["u64_backend"]
