@@ -1,6 +1,6 @@
-use asymmetric::{KeyPair, DH_SIZE};
-use disco::KEY_SIZE;
-use patterns::HandshakePattern;
+use crate::asymmetric::{KeyPair, DH_SIZE};
+use crate::disco::KEY_SIZE;
+use crate::patterns::HandshakePattern;
 
 // The following constants represent the details of this implementation of the Noise specification.
 const DISCO_DRAFT_VERSION: &'static [u8] = b"3";

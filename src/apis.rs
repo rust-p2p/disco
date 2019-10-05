@@ -3,9 +3,9 @@
 use std::error;
 use std::fmt;
 
-use asymmetric::DH_SIZE;
-use config::Config;
-use disco::{DiscoReadError, DiscoWriteError, HandshakeState, KEY_SIZE};
+use crate::asymmetric::DH_SIZE;
+use crate::config::Config;
+use crate::disco::{DiscoReadError, DiscoWriteError, HandshakeState, KEY_SIZE};
 
 use strobe_rs::Strobe;
 use take_mut;

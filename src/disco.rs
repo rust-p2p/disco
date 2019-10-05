@@ -2,9 +2,9 @@ use std::collections::VecDeque;
 use std::iter;
 use std::vec;
 
-use asymmetric::{self, KeyPair, DH_SIZE};
-use config::{NOISE_MAX_PLAINTEXT_SIZE, NOISE_TAG_SIZE};
-use patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
+use crate::asymmetric::{self, KeyPair, DH_SIZE};
+use crate::config::{NOISE_MAX_PLAINTEXT_SIZE, NOISE_TAG_SIZE};
+use crate::patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
 use strobe_rs::{AuthError, SecParam, Strobe, STROBE_VERSION};
 
 const TAG_SIZE: usize = NOISE_TAG_SIZE;
