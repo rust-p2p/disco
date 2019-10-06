@@ -2,13 +2,10 @@ use std::collections::VecDeque;
 use std::iter;
 use std::vec;
 
-use crate::asymmetric::{self, KeyPair, DH_SIZE};
-use crate::config::{NOISE_MAX_PLAINTEXT_SIZE, NOISE_TAG_SIZE};
+use crate::config::{DH_SIZE, KEY_SIZE, NOISE_MAX_PLAINTEXT_SIZE, NOISE_TAG_SIZE as TAG_SIZE};
 use crate::patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
+use crate::x25519::{EphemeralSecret, PublicKey, SharedSecret, StaticSecret};
 use strobe_rs::{AuthError, SecParam, Strobe, STROBE_VERSION};
-
-const TAG_SIZE: usize = NOISE_TAG_SIZE;
-pub const KEY_SIZE: usize = 32;
 
 struct SymmetricState {
     strobe_state: Strobe,
@@ -40,17 +37,17 @@ impl SymmetricState {
         }
     }
 
-    pub fn mix_key(&mut self, input_key_material: &[u8; KEY_SIZE]) {
-        self.mix_key_and_hash(input_key_material);
+    pub fn mix_key(&mut self, shared_secret: &[u8]) {
+        self.mix_key_and_hash(shared_secret);
         self.is_keyed = true;
     }
 
-    pub fn mix_hash(&mut self, data: Vec<u8>) {
+    pub fn mix_hash(&mut self, data: &[u8]) {
         self.strobe_state.ad(&data, false);
     }
 
-    pub fn mix_key_and_hash(&mut self, input_key_material: &[u8; KEY_SIZE]) {
-        self.strobe_state.ad(&input_key_material[..], false);
+    pub fn mix_key_and_hash(&mut self, shared_secret: &[u8]) {
+        self.strobe_state.ad(&shared_secret[..], false);
     }
 
     pub fn get_handshake_hash(&mut self) -> Vec<u8> {
@@ -104,12 +101,6 @@ impl SymmetricState {
     }
 }
 
-// Used in the getter methods in HandshakeState
-enum KeyType {
-    Static,
-    Ephemeral,
-}
-
 pub enum DiscoWriteError {
     TooLongErr,
 }
@@ -123,17 +114,19 @@ pub enum DiscoReadError {
 // An object that encodes handshake state. This is the primary API for initiating Disco sessions.
 pub(crate) struct HandshakeState {
     symm_state: SymmetricState,
-    local_eph_keypair: Option<KeyPair>,
-    local_static_keypair: Option<KeyPair>,
-    remote_eph_pub_key: Option<[u8; DH_SIZE]>,
-    remote_static_pub_key: Option<[u8; DH_SIZE]>,
+    ephemeral_secret: Option<EphemeralSecret>,
+    ephemeral_public: Option<PublicKey>,
+    static_secret: Option<StaticSecret>,
+    static_public: Option<PublicKey>,
+    remote_ephemeral: Option<PublicKey>,
+    remote_static: Option<PublicKey>,
     // Are we the initiator?
     initiator: bool,
     message_pats: VecDeque<MessagePattern>,
     // Is my role to `write_msg` (as opposed to `read_msg`)?
     should_write: bool,
     // Pre-shared key.
-    psk: Option<[u8; KEY_SIZE]>,
+    psk: Option<SharedSecret>,
 }
 
 impl HandshakeState {
@@ -148,10 +141,12 @@ impl HandshakeState {
     pub fn new(
         handshake_pat: HandshakePattern,
         initiator: bool,
-        prologue: Vec<u8>,
-        (local_eph_keypair, local_static_keypair): (Option<KeyPair>, Option<KeyPair>),
-        (remote_eph_pub_key, remote_static_pub_key): (Option<[u8; DH_SIZE]>, Option<[u8; DH_SIZE]>),
-        psk: Option<[u8; KEY_SIZE]>,
+        prologue: Box<[u8]>,
+        ephemeral_secret: Option<EphemeralSecret>,
+        static_secret: Option<StaticSecret>,
+        remote_ephemeral: Option<PublicKey>,
+        remote_static: Option<PublicKey>,
+        psk: Option<SharedSecret>,
     ) -> HandshakeState {
         let proto = [
             b"Noise_",
@@ -161,17 +156,22 @@ impl HandshakeState {
         ]
         .concat();
         let mut symm_state = SymmetricState::new(proto);
-        symm_state.mix_hash(prologue);
+        symm_state.mix_hash(&prologue);
 
         let message_pats = VecDeque::from(handshake_pat.message_pats.to_vec());
         let should_write = initiator;
 
+        let ephemeral_public = ephemeral_secret.as_ref().map(PublicKey::from);
+        let static_public = static_secret.as_ref().map(PublicKey::from);
+
         let mut h = HandshakeState {
             symm_state,
-            local_eph_keypair,
-            local_static_keypair,
-            remote_eph_pub_key,
-            remote_static_pub_key,
+            ephemeral_secret,
+            ephemeral_public,
+            static_secret,
+            static_public,
+            remote_ephemeral,
+            remote_static,
             initiator,
             message_pats,
             should_write,
@@ -182,40 +182,28 @@ impl HandshakeState {
         h
     }
 
-    // Returns a pubkey of the requested type. Informatively panics if it can't.
-    fn get_remote_pub_key(&self, ty: KeyType, in_token: Token) -> &[u8; DH_SIZE] {
-        match ty {
-            KeyType::Static => self.remote_static_pub_key.as_ref().unwrap_or_else(|| {
-                panic!(
-                    "disco: In processing {:?}, no remote static pubkey is set",
-                    in_token
-                );
-            }),
-            KeyType::Ephemeral => self.remote_eph_pub_key.as_ref().unwrap_or_else(|| {
-                panic!(
-                    "disco: In processing {:?}, no remote ephemeral pubkey is set",
-                    in_token
-                );
-            }),
-        }
+    fn e(&mut self) -> EphemeralSecret {
+        self.ephemeral_secret.take().unwrap()
     }
 
-    // Returns a keypair of the requested type. Informatively panics if it can't.
-    fn get_local_keypair(&self, ty: KeyType, in_token: Token) -> &KeyPair {
-        match ty {
-            KeyType::Static => self.local_static_keypair.as_ref().unwrap_or_else(|| {
-                panic!(
-                    "disco: In processing {:?}, no local static keypair is set",
-                    in_token
-                );
-            }),
-            KeyType::Ephemeral => self.local_eph_keypair.as_ref().unwrap_or_else(|| {
-                panic!(
-                    "disco: In processing {:?}, no local ephemeral keypair is set",
-                    in_token
-                );
-            }),
-        }
+    fn s(&mut self) -> StaticSecret {
+        self.static_secret.take().unwrap()
+    }
+
+    fn e_pub(&self) -> &PublicKey {
+        self.static_public.as_ref().unwrap()
+    }
+
+    fn s_pub(&self) -> &PublicKey {
+        self.static_public.as_ref().unwrap()
+    }
+
+    fn re(&self) -> &PublicKey {
+        self.remote_ephemeral.as_ref().unwrap()
+    }
+
+    fn rs(&self) -> &PublicKey {
+        self.remote_static.as_ref().unwrap()
     }
 
     // Calls mix_hash() once for each public key listed in the pre-messages from handshake_pattern,
@@ -227,14 +215,11 @@ impl HandshakeState {
         for &token in pre_message_pats.initiator {
             if let Token::S = token {
                 if self.initiator {
-                    let s = self
-                        .get_local_keypair(KeyType::Static, token)
-                        .pub_key_bytes()
-                        .to_vec();
-                    self.symm_state.mix_hash(s);
+                    let s = self.s_pub().as_bytes().to_vec();
+                    self.symm_state.mix_hash(&s);
                 } else {
-                    let rs = self.get_remote_pub_key(KeyType::Static, token).to_vec();
-                    self.symm_state.mix_hash(rs);
+                    let rs = self.rs().as_bytes().to_vec();
+                    self.symm_state.mix_hash(&rs);
                 }
             } else {
                 panic!("disco: Token of pre-message not supported: {:?}", token)
@@ -245,14 +230,11 @@ impl HandshakeState {
         for &token in pre_message_pats.responder {
             if let Token::S = token {
                 if self.initiator {
-                    let rs = self.get_remote_pub_key(KeyType::Static, token).to_vec();
-                    self.symm_state.mix_hash(rs);
+                    let rs = self.rs().as_bytes().to_vec();
+                    self.symm_state.mix_hash(&rs);
                 } else {
-                    let s = self
-                        .get_local_keypair(KeyType::Static, token)
-                        .pub_key_bytes()
-                        .to_vec();
-                    self.symm_state.mix_hash(s);
+                    let s = self.s_pub().as_bytes().to_vec();
+                    self.symm_state.mix_hash(&s);
                 }
             } else {
                 panic!("disco: Pre-message token not supported: {:?}", token)
@@ -292,87 +274,61 @@ impl HandshakeState {
         for &token in pat {
             match token {
                 Token::E => {
-                    let e = KeyPair::gen();
-                    // Scope e_bytes so we can move e after this
-                    {
-                        let e_bytes = e.pub_key_bytes();
-                        msg_buf.extend_from_slice(e_bytes);
-                        self.symm_state.mix_hash(e_bytes.to_vec());
-                        if self.psk.is_some() {
-                            self.symm_state.mix_key(e_bytes);
-                        }
+                    let e = EphemeralSecret::new(&mut rand::rngs::OsRng);
+                    let e_pub = PublicKey::from(&e);
+
+                    msg_buf.extend_from_slice(e_pub.as_bytes());
+                    self.symm_state.mix_hash(e_pub.as_bytes());
+                    if self.psk.is_some() {
+                        self.symm_state.mix_key(e_pub.as_bytes());
                     }
-                    self.local_eph_keypair = Some(e);
+
+                    self.ephemeral_secret = Some(e);
+                    self.ephemeral_public = Some(e_pub);
                 }
 
                 Token::S => {
-                    let s = self
-                        .get_local_keypair(KeyType::Static, token)
-                        .pub_key_bytes()
-                        .to_vec();
+                    let s = self.s_pub().as_bytes().to_vec();
                     let ct = self.symm_state.encrypt_and_hash(s);
                     msg_buf.extend(ct);
                 }
 
                 Token::EE => {
-                    let e_e_key = {
-                        let e = self.get_local_keypair(KeyType::Ephemeral, token);
-                        let re = self.get_remote_pub_key(KeyType::Ephemeral, token);
-                        asymmetric::dh(e, re)
-                    };
-                    self.symm_state.mix_key(&e_e_key);
+                    let ee = self.e().diffie_hellman(self.re());
+                    self.symm_state.mix_key(ee.as_bytes());
                 }
 
                 Token::ES => {
                     if self.initiator {
-                        let e_rs_key = {
-                            let e = self.get_local_keypair(KeyType::Ephemeral, token);
-                            let rs = self.get_remote_pub_key(KeyType::Static, token);
-                            asymmetric::dh(e, rs)
-                        };
-                        self.symm_state.mix_key(&e_rs_key);
+                        let es = self.e().diffie_hellman(self.rs());
+                        self.symm_state.mix_key(es.as_bytes());
                     } else {
-                        let s_re_key = {
-                            let s = self.get_local_keypair(KeyType::Static, token);
-                            let re = self.get_remote_pub_key(KeyType::Ephemeral, token);
-                            asymmetric::dh(s, re)
-                        };
-                        self.symm_state.mix_key(&s_re_key);
+                        let se = self.s().diffie_hellman(self.re());
+                        self.symm_state.mix_key(se.as_bytes());
                     }
                 }
 
                 Token::SE => {
                     if self.initiator {
-                        let s_re_key = {
-                            let s = self.get_local_keypair(KeyType::Static, token);
-                            let re = self.get_remote_pub_key(KeyType::Ephemeral, token);
-                            asymmetric::dh(s, re)
-                        };
-                        self.symm_state.mix_key(&s_re_key);
+                        let se = self.s().diffie_hellman(self.re());
+                        self.symm_state.mix_key(se.as_bytes());
                     } else {
-                        let e_rs_key = {
-                            let e = self.get_local_keypair(KeyType::Ephemeral, token);
-                            let rs = self.get_remote_pub_key(KeyType::Static, token);
-                            asymmetric::dh(e, rs)
-                        };
-                        self.symm_state.mix_key(&e_rs_key);
+                        let es = self.e().diffie_hellman(self.rs());
+                        self.symm_state.mix_key(es.as_bytes());
                     }
                 }
 
                 Token::SS => {
-                    let s_s_key = {
-                        let s = self.get_local_keypair(KeyType::Static, token);
-                        let rs = self.get_remote_pub_key(KeyType::Static, token);
-                        asymmetric::dh(s, rs)
-                    };
-                    self.symm_state.mix_key(&s_s_key);
+                    let ss = self.s().diffie_hellman(self.rs());
+                    self.symm_state.mix_key(ss.as_bytes());
                 }
 
                 Token::Psk => {
                     let psk = self
                         .psk
+                        .as_ref()
                         .expect("disco: In processing psk token, no preshared key is set");
-                    self.symm_state.mix_key_and_hash(&psk);
+                    self.symm_state.mix_key_and_hash(psk.as_bytes());
                 }
             }
         }
@@ -426,7 +382,7 @@ impl HandshakeState {
                     let tmp = msg.split_off(DH_SIZE);
                     let mut e = [0u8; KEY_SIZE];
                     e.copy_from_slice(&*msg);
-                    self.remote_eph_pub_key = Some(e);
+                    self.remote_ephemeral = Some(PublicKey::from(e));
                     msg = tmp;
                 }
 
@@ -452,68 +408,45 @@ impl HandshakeState {
                         .map_err(|_| DiscoReadError::AuthErr)?;
                     let mut s = [0u8; DH_SIZE];
                     s.copy_from_slice(&*pt);
-                    self.remote_static_pub_key = Some(s);
+                    self.remote_static = Some(PublicKey::from(s));
                 }
 
                 Token::EE => {
-                    let e_e_key = {
-                        let e = self.get_local_keypair(KeyType::Ephemeral, token);
-                        let re = self.get_remote_pub_key(KeyType::Ephemeral, token);
-                        asymmetric::dh(e, re)
-                    };
-                    self.symm_state.mix_key(&e_e_key);
+                    let ee = self.e().diffie_hellman(self.re());
+                    self.symm_state.mix_key(ee.as_bytes());
                 }
 
                 Token::ES => {
                     if self.initiator {
-                        let e_rs_key = {
-                            let e = self.get_local_keypair(KeyType::Ephemeral, token);
-                            let rs = self.get_remote_pub_key(KeyType::Static, token);
-                            asymmetric::dh(e, rs)
-                        };
-                        self.symm_state.mix_key(&e_rs_key);
+                        let es = self.e().diffie_hellman(self.rs());
+                        self.symm_state.mix_key(es.as_bytes());
                     } else {
-                        let s_re_key = {
-                            let s = self.get_local_keypair(KeyType::Static, token);
-                            let re = self.get_remote_pub_key(KeyType::Ephemeral, token);
-                            asymmetric::dh(s, re)
-                        };
-                        self.symm_state.mix_key(&s_re_key);
+                        let se = self.s().diffie_hellman(self.re());
+                        self.symm_state.mix_key(se.as_bytes());
                     }
                 }
 
                 Token::SE => {
                     if self.initiator {
-                        let s_re_key = {
-                            let s = self.get_local_keypair(KeyType::Static, token);
-                            let re = self.get_remote_pub_key(KeyType::Ephemeral, token);
-                            asymmetric::dh(s, re)
-                        };
-                        self.symm_state.mix_key(&s_re_key);
+                        let se = self.s().diffie_hellman(self.re());
+                        self.symm_state.mix_key(se.as_bytes());
                     } else {
-                        let e_rs_key = {
-                            let e = self.get_local_keypair(KeyType::Ephemeral, token);
-                            let rs = self.get_remote_pub_key(KeyType::Static, token);
-                            asymmetric::dh(e, rs)
-                        };
-                        self.symm_state.mix_key(&e_rs_key);
+                        let es = self.e().diffie_hellman(self.rs());
+                        self.symm_state.mix_key(es.as_bytes());
                     }
                 }
 
                 Token::SS => {
-                    let s_s_key = {
-                        let s = self.get_local_keypair(KeyType::Static, token);
-                        let rs = self.get_remote_pub_key(KeyType::Static, token);
-                        asymmetric::dh(s, rs)
-                    };
-                    self.symm_state.mix_key(&s_s_key);
+                    let ss = self.s().diffie_hellman(self.rs());
+                    self.symm_state.mix_key(ss.as_bytes());
                 }
 
                 Token::Psk => {
                     let psk = self
                         .psk
+                        .as_ref()
                         .expect("disco: In processing psk token, no preshared key is set");
-                    self.symm_state.mix_key_and_hash(&psk);
+                    self.symm_state.mix_key_and_hash(psk.as_bytes());
                 }
             }
         }

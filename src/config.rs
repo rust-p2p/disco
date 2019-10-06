@@ -1,5 +1,5 @@
-use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
 use crate::patterns::HandshakePattern;
+use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
 
 // The following constants represent the details of this implementation of the
 // Noise specification.
@@ -10,6 +10,10 @@ pub const NOISE_DH: &[u8] = b"25519";
 pub const NOISE_MAX_MSG_SIZE: usize = 65535;
 pub const NOISE_TAG_SIZE: usize = 16;
 pub const NOISE_MAX_PLAINTEXT_SIZE: usize = NOISE_MAX_MSG_SIZE - NOISE_TAG_SIZE;
+
+// Should match SharedSecret and StaticSecret defined in x25519.
+pub const DH_SIZE: usize = 32;
+pub const KEY_SIZE: usize = 32;
 
 pub enum Role {
     Initiator,

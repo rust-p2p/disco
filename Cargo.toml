@@ -16,3 +16,5 @@ take_mut = "0.2.2"
 version = "0.5.2"
 default-features = false
 features = ["u64_backend"]
+git = "https://github.com/dvc94ch/x25519-dalek"
+branch = "update-rand"
