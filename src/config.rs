@@ -15,13 +15,18 @@ pub const NOISE_MAX_PLAINTEXT_SIZE: usize = NOISE_MAX_MSG_SIZE - NOISE_TAG_SIZE;
 pub const DH_SIZE: usize = 32;
 pub const KEY_SIZE: usize = 32;
 
+/// Role in the handshake process.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Role {
+    /// Initiates the handshake.
     Initiator,
+    /// Responds to the handshake.
     Responder,
 }
 
+/// Public key verifier.
 pub trait PublicKeyVerifier {
+    /// Verify a public key given a proof.
     fn verify(&self, pub_key: &PublicKey, proof: &[u8]) -> bool;
 }
 
@@ -37,6 +42,7 @@ pub struct Config {
     pub(crate) half_duplex: bool,
 }
 
+/// Config builder.
 pub struct ConfigBuilder {
     handshake_pattern: HandshakePattern,
     role: Role,

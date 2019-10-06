@@ -1,5 +1,6 @@
-/// Checks if, at some point in the protocol, the peer needs to verify the other peer static public
-/// key and if the peer needs to provide a proof for its static public key.
+//! Checks if, at some point in the protocol, the peer needs to verify the
+//! other peer static public key and if the peer needs to provide a proof for
+//!  its static public key.
 use crate::config::{Config, Role};
 use crate::disco::{DiscoReadError, DiscoWriteError, HandshakeState};
 
@@ -22,12 +23,14 @@ enum SessionState {
     Transport { rx: Strobe, tx: Strobe },
 }
 
+/// State machine for a noise session.
 pub struct Session {
     state: SessionState,
     role: Role,
 }
 
 impl Session {
+    /// Creates a new session from a config.
     pub fn new(config: Config) -> Self {
         let Config {
             handshake_pattern,
@@ -54,6 +57,7 @@ impl Session {
         Self { state, role }
     }
 
+    /// Reads a message.
     pub fn read_message(&mut self, mut input: Vec<u8>) -> Result<Vec<u8>, DiscoReadError> {
         let mut just_completed_handshake = false;
         let res = match self.state {
@@ -75,6 +79,7 @@ impl Session {
         Ok(res)
     }
 
+    /// Writes a message.
     pub fn write_message(&mut self, mut payload: Vec<u8>) -> Result<Vec<u8>, DiscoWriteError> {
         let mut just_completed_handshake = false;
         let payload = match self.state {
@@ -96,6 +101,9 @@ impl Session {
         Ok(payload)
     }
 
+    /// Parties might wish to periodically update their cipherstate keys to
+    /// ensure that a compromise of cipherstate keys will not decrypt older
+    /// messages.
     pub fn rekey_rx(&mut self) {
         if let SessionState::Transport { ref mut rx, tx: _ } = self.state {
             rx.ratchet(16, false);
@@ -104,6 +112,9 @@ impl Session {
         }
     }
 
+    /// Parties might wish to periodically update their cipherstate keys to
+    /// ensure that a compromise of cipherstate keys will not decrypt older
+    /// messages.
     pub fn rekey_tx(&mut self) {
         if let SessionState::Transport { ref mut tx, rx: _ } = self.state {
             tx.ratchet(16, false);

@@ -4,7 +4,7 @@ use std::vec;
 
 use crate::config::{DH_SIZE, KEY_SIZE, NOISE_MAX_PLAINTEXT_SIZE, NOISE_TAG_SIZE as TAG_SIZE};
 use crate::patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
-use crate::x25519::{EphemeralSecret, PublicKey, SharedSecret, StaticSecret};
+use crate::x25519::{PublicKey, SharedSecret, StaticSecret};
 use failure::Fail;
 use strobe_rs::{AuthError, SecParam, Strobe, STROBE_VERSION};
 

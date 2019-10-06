@@ -1,5 +1,5 @@
 //! A rust implementation of the disco protocol.
-//#![deny(missing_docs)]
+#![deny(missing_docs)]
 #![deny(warnings)]
 #![allow(unused)]
 
