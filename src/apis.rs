@@ -38,49 +38,6 @@ impl fmt::Display for ReqError {
     }
 }
 
-fn check_requirements<F>(is_client: bool, config: &Config<F>) -> Result<(), ReqError>
-where
-    F: Fn(&[u8; DH_SIZE], &[u8]) -> bool,
-{
-    match config.handshake_pat.name {
-        b"NX" | b"KX" | b"XX" | b"IX" => {
-            if is_client && config.pub_key_verifier.is_none() {
-                return Err(ReqError::ErrNoPubKeyVerifier);
-            } else if !is_client && config.static_pub_key_proof.is_none() {
-                return Err(ReqError::ErrNoProof);
-            }
-        }
-        _ => {}
-    }
-
-    match config.handshake_pat.name {
-        b"XN" | b"XK" | b"XX" | b"X" | b"IN" | b"IK" | b"IX" => {
-            if is_client && config.static_pub_key_proof.is_none() {
-                return Err(ReqError::ErrNoProof);
-            } else if !is_client && config.pub_key_verifier.is_none() {
-                return Err(ReqError::ErrNoPubKeyVerifier);
-            }
-        }
-        _ => {}
-    }
-
-    match config.handshake_pat.name {
-        b"NNPsk2" => {
-            if config.preshared_key.is_none() {
-                return Err(ReqError::ErrNoPsk);
-            }
-        }
-        _ => {}
-    }
-
-    match config.handshake_pat.name {
-        b"NX" | b"KX" | b"XX" | b"IX" | b"XN" | b"XK" | b"X" | b"IN" | b"IK" => {}
-        name => panic!("disco: unknown handshake type: {:?}", name),
-    }
-
-    Ok(())
-}
-
 enum SessionState {
     Handshake(HandshakeState),
     // Transport is (rx, tx) of CipherState
