@@ -40,6 +40,7 @@ pub(crate) struct PreMessagePatternPair {
     pub responder: MessagePattern,
 }
 
+/// Handshake protocol specification.
 #[derive(Eq, PartialEq)]
 pub struct HandshakePattern {
     pub(crate) name: &'static [u8],

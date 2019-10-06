@@ -1,9 +1,10 @@
+//! Symmetric crypto primitives built with strobe.
 use rand::{thread_rng, RngCore};
 pub use strobe_rs::AuthError;
 use strobe_rs::{SecParam, Strobe};
 
-pub const NONCE_SIZE: usize = 192 / 8;
-pub(crate) const TAG_SIZE: usize = 16;
+const NONCE_SIZE: usize = 192 / 8;
+const TAG_SIZE: usize = 16;
 
 /// Represents plaintext with an associated MAC.
 #[derive(Clone, Debug)]

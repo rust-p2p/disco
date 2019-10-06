@@ -50,7 +50,10 @@ where
                 return Err(ReqError::ErrNoProof);
             }
         }
+        _ => {}
+    }
 
+    match config.handshake_pat.name {
         b"XN" | b"XK" | b"XX" | b"X" | b"IN" | b"IK" | b"IX" => {
             if is_client && config.static_pub_key_proof.is_none() {
                 return Err(ReqError::ErrNoProof);
@@ -58,17 +61,21 @@ where
                 return Err(ReqError::ErrNoPubKeyVerifier);
             }
         }
+        _ => {}
+    }
 
+    match config.handshake_pat.name {
         b"NNPsk2" => {
             if config.preshared_key.is_none() {
                 return Err(ReqError::ErrNoPsk);
             }
         }
+        _ => {}
+    }
 
-        _ => panic!(
-            "disco: unknown handshake type: {:?}",
-            config.handshake_pat.name
-        ),
+    match config.handshake_pat.name {
+        b"NX" | b"KX" | b"XX" | b"IX" | b"XN" | b"XK" | b"X" | b"IN" | b"IK" => {}
+        name => panic!("disco: unknown handshake type: {:?}", name),
     }
 
     Ok(())
@@ -149,7 +156,7 @@ impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
         let initiator = self.initiator;
         // TODO: Remove dependency on take_mut if possible
         take_mut::take(&mut self.state, |st| {
-            if let SessionState::Handshake(mut hs_st) = st {
+            if let SessionState::Handshake(hs_st) = st {
                 let (s_init, s_resp) = hs_st.finalize();
                 // Remember, this is (rx, tx)
                 if initiator {
