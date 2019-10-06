@@ -3,7 +3,7 @@
 #![deny(warnings)]
 #![allow(unused)]
 
-//mod apis;
+pub mod apis;
 pub mod config;
 mod disco;
 pub mod patterns;

@@ -8,6 +8,7 @@ keywords = ["crypto", "strobe", "disco", "protocol", "framework"]
 edition = "2018"
 
 [dependencies]
+failure = "0.1"
 rand = "0.7.2"
 strobe-rs = "0.5.2"
 take_mut = "0.2.2"

@@ -1,60 +1,63 @@
 /// Checks if, at some point in the protocol, the peer needs to verify the other peer static public
 /// key and if the peer needs to provide a proof for its static public key.
-use std::error;
-use std::fmt;
+use crate::config::{Config, Role};
+use crate::disco::{DiscoReadError, DiscoWriteError, HandshakeState};
 
-use crate::asymmetric::DH_SIZE;
-use crate::config::Config;
-use crate::disco::{DiscoReadError, DiscoWriteError, HandshakeState, KEY_SIZE};
-
+use failure::Fail;
 use strobe_rs::Strobe;
 use take_mut;
 
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 enum ReqError {
+    #[fail(display = "disco: no public key verifier set in config.")]
     ErrNoPubKeyVerifier,
+    #[fail(display = "disco: no public key proof set in config.")]
     ErrNoProof,
+    #[fail(display = "noise: psk not provided for NNpsk2 handshake pattern.")]
     ErrNoPsk,
-}
-
-impl error::Error for ReqError {
-    fn description(&self) -> &str {
-        match self {
-            ReqError::ErrNoPubKeyVerifier => "disco: no pubkey verifier set in Config",
-            ReqError::ErrNoProof => "disco: no pubkey proof set in Config",
-            ReqError::ErrNoPsk => "noise: psk not provided for NNpsk2 handshake pattern",
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn error::Error> {
-        None
-    }
-}
-
-impl fmt::Display for ReqError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use std::error::Error;
-        f.write_str(self.description())
-    }
 }
 
 enum SessionState {
     Handshake(HandshakeState),
-    // Transport is (rx, tx) of CipherState
-    Transport(Strobe, Strobe),
+    Transport { rx: Strobe, tx: Strobe },
 }
 
-struct Session<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> {
-    config: Config<F>,
+pub struct Session {
     state: SessionState,
-    initiator: bool,
+    role: Role,
 }
 
-impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
+impl Session {
+    pub fn new(config: Config) -> Self {
+        let Config {
+            handshake_pattern,
+            role,
+            secret,
+            remote_public,
+            prologue,
+            public_key_proof: _,
+            public_key_verifier: _,
+            preshared_secret,
+            half_duplex: _,
+        } = config;
+        let hstate = HandshakeState::new(
+            handshake_pattern,
+            role == Role::Initiator,
+            prologue,
+            None,
+            Some(secret),
+            None,
+            Some(remote_public),
+            preshared_secret,
+        );
+        let state = SessionState::Handshake(hstate);
+        Self { state, role }
+    }
+
     pub fn read_message(&mut self, mut input: Vec<u8>) -> Result<Vec<u8>, DiscoReadError> {
         let mut just_completed_handshake = false;
         let res = match self.state {
-            SessionState::Transport(ref mut rx, _) => {
+            SessionState::Transport { ref mut rx, tx: _ } => {
                 rx.recv_enc(&mut input, false);
                 input
             }
@@ -75,7 +78,7 @@ impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
     pub fn write_message(&mut self, mut payload: Vec<u8>) -> Result<Vec<u8>, DiscoWriteError> {
         let mut just_completed_handshake = false;
         let payload = match self.state {
-            SessionState::Transport(_, ref mut tx) => {
+            SessionState::Transport { ref mut tx, rx: _ } => {
                 tx.send_enc(&mut payload, false);
                 payload
             }
@@ -94,7 +97,7 @@ impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
     }
 
     pub fn rekey_rx(&mut self) {
-        if let SessionState::Transport(ref mut rx, _) = self.state {
+        if let SessionState::Transport { ref mut rx, tx: _ } = self.state {
             rx.ratchet(16, false);
         } else {
             panic!("disco: Attempted to re-key before handshake was finished");
@@ -102,7 +105,7 @@ impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
     }
 
     pub fn rekey_tx(&mut self) {
-        if let SessionState::Transport(_, ref mut tx) = self.state {
+        if let SessionState::Transport { ref mut tx, rx: _ } = self.state {
             tx.ratchet(16, false);
         } else {
             panic!("disco: Attempted to re-key before handshake was finished");
@@ -110,24 +113,24 @@ impl<F: Fn(&[u8; DH_SIZE], &[u8]) -> bool> Session<F> {
     }
 
     fn to_transport_phase(&mut self) {
-        let initiator = self.initiator;
+        let role = self.role;
         // TODO: Remove dependency on take_mut if possible
         take_mut::take(&mut self.state, |st| {
             if let SessionState::Handshake(hs_st) = st {
                 let (s_init, s_resp) = hs_st.finalize();
-                // Remember, this is (rx, tx)
-                if initiator {
-                    SessionState::Transport(s_resp, s_init)
-                } else {
-                    SessionState::Transport(s_init, s_resp)
+                match role {
+                    Role::Initiator => SessionState::Transport {
+                        rx: s_resp,
+                        tx: s_init,
+                    },
+                    Role::Responder => SessionState::Transport {
+                        rx: s_init,
+                        tx: s_resp,
+                    },
                 }
             } else {
                 st
             }
         });
-    }
-
-    pub fn set_psk(&mut self, key: [u8; KEY_SIZE]) {
-        self.config.preshared_key = Some(key);
     }
 }

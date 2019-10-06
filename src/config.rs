@@ -15,6 +15,7 @@ pub const NOISE_MAX_PLAINTEXT_SIZE: usize = NOISE_MAX_MSG_SIZE - NOISE_TAG_SIZE;
 pub const DH_SIZE: usize = 32;
 pub const KEY_SIZE: usize = 32;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Role {
     Initiator,
     Responder,
@@ -26,6 +27,7 @@ pub trait PublicKeyVerifier {
 
 pub struct Config {
     pub(crate) handshake_pattern: HandshakePattern,
+    pub(crate) role: Role,
     pub(crate) secret: StaticSecret,
     pub(crate) remote_public: PublicKey,
     pub(crate) prologue: Box<[u8]>,
@@ -142,6 +144,7 @@ impl ConfigBuilder {
 
         Config {
             handshake_pattern: self.handshake_pattern,
+            role: self.role,
             secret: self.secret.unwrap(),
             remote_public: self.remote_public.unwrap(),
             prologue: self.prologue.unwrap_or(vec![].into_boxed_slice()),

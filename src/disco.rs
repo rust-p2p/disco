@@ -112,7 +112,7 @@ pub enum DiscoReadError {
 }
 
 // An object that encodes handshake state. This is the primary API for initiating Disco sessions.
-pub(crate) struct HandshakeState {
+pub struct HandshakeState {
     symm_state: SymmetricState,
     ephemeral_secret: Option<EphemeralSecret>,
     ephemeral_public: Option<PublicKey>,
@@ -348,7 +348,7 @@ impl HandshakeState {
     }
 
     // Returns (payload, is_handshake_complete)
-    pub(crate) fn read_msg(&mut self, mut msg: Vec<u8>) -> Result<(Vec<u8>, bool), DiscoReadError> {
+    pub fn read_msg(&mut self, mut msg: Vec<u8>) -> Result<(Vec<u8>, bool), DiscoReadError> {
         if !self.should_write {
             panic!("disco: Call to read_msg when it is not our turn to read");
         }
@@ -467,7 +467,7 @@ impl HandshakeState {
         }
     }
 
-    pub(crate) fn finalize(self) -> (Strobe, Strobe) {
+    pub fn finalize(self) -> (Strobe, Strobe) {
         self.symm_state.split()
     }
 }
