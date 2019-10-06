@@ -98,3 +98,17 @@ pub const NOISE_KK: HandshakePattern = HandshakePattern {
         &[Token::E, Token::EE, Token::SE],
     ],
 };
+
+/// A pattern where the client and server static key are transmitted.
+pub const NOISE_XX: HandshakePattern = HandshakePattern {
+    name: b"XX",
+    pre_message_pats: PreMessagePatternPair {
+        initiator: &[],
+        responder: &[],
+    },
+    message_pats: &[
+        &[Token::E],
+        &[Token::E, Token::EE, Token::S, Token::ES],
+        &[Token::S, Token::SE],
+    ],
+};
