@@ -29,7 +29,7 @@ pub struct Config {
     pub(crate) handshake_pattern: HandshakePattern,
     pub(crate) role: Role,
     pub(crate) secret: StaticSecret,
-    pub(crate) remote_public: PublicKey,
+    pub(crate) remote_public: Option<PublicKey>,
     pub(crate) prologue: Box<[u8]>,
     pub(crate) public_key_proof: Option<Box<[u8]>>,
     pub(crate) public_key_verifier: Option<Box<dyn PublicKeyVerifier>>,
@@ -66,20 +66,20 @@ impl ConfigBuilder {
     }
 
     /// Static secret for the peer.
-    pub fn secret(&mut self, secret: StaticSecret) -> &mut Self {
+    pub fn secret(mut self, secret: StaticSecret) -> Self {
         self.secret = Some(secret);
         self
     }
 
     /// The remote peer's static public key.
-    pub fn remote_public(&mut self, public: PublicKey) -> &mut Self {
+    pub fn remote_public(mut self, public: PublicKey) -> Self {
         self.remote_public = Some(public);
         self
     }
 
     /// Any unencrypted messages that the client and the server exchanged in
     /// this session prior to the handshake.
-    pub fn prologue(&mut self, prologue: Vec<u8>) -> &mut Self {
+    pub fn prologue(mut self, prologue: Vec<u8>) -> Self {
         self.prologue = Some(prologue.into_boxed_slice());
         self
     }
@@ -87,7 +87,7 @@ impl ConfigBuilder {
     /// If the chosen handshake pattern requires the current peer to send a
     /// static public key as part of the handshake, this proof over the key is
     /// mandatory in order for the other peer to verify the current peer's key.
-    pub fn public_key_proof(&mut self, proof: Vec<u8>) -> &mut Self {
+    pub fn public_key_proof(mut self, proof: Vec<u8>) -> Self {
         self.public_key_proof = Some(proof.into_boxed_slice());
         self
     }
@@ -95,7 +95,7 @@ impl ConfigBuilder {
     /// If the chosen handshake pattern requires the remote peer to send an
     /// unknown static public key as part of the handshake, this callback is
     /// mandatory in order to validate it.
-    pub fn public_key_verifier<TVerifier>(&mut self, verifier: TVerifier) -> &mut Self
+    pub fn public_key_verifier<TVerifier>(mut self, verifier: TVerifier) -> Self
     where
         TVerifier: PublicKeyVerifier + 'static,
     {
@@ -104,7 +104,7 @@ impl ConfigBuilder {
     }
 
     /// A pre-shared key for handshake patterns including a `psk` token.
-    pub fn preshared_secret(&mut self, secret: SharedSecret) -> &mut Self {
+    pub fn preshared_secret(mut self, secret: SharedSecret) -> Self {
         self.preshared_secret = Some(secret);
         self
     }
@@ -114,7 +114,7 @@ impl ConfigBuilder {
     /// Setting this value to true will require the peers to write and read in
     /// turns. If this requirement is not respected by the application, the
     /// consequences could be catastrophic.
-    pub fn half_duplex(&mut self) -> &mut Self {
+    pub fn half_duplex(mut self) -> Self {
         self.half_duplex = true;
         self
     }
@@ -122,7 +122,7 @@ impl ConfigBuilder {
     /// Build a disco config.
     pub fn build(self) -> Config {
         match self.handshake_pattern.name {
-            b"NX" | b"KX" | b"XX" | b"IX" => match &self.role {
+            b"NX" | b"KX" | b"XX" | b"IX" => match self.role {
                 Role::Initiator => assert!(self.public_key_verifier.is_some()),
                 Role::Responder => assert!(self.public_key_proof.is_some()),
             },
@@ -130,9 +130,25 @@ impl ConfigBuilder {
         }
 
         match self.handshake_pattern.name {
-            b"XN" | b"XK" | b"XX" | b"X" | b"IN" | b"IK" | b"IX" => match &self.role {
+            b"XN" | b"XK" | b"XX" | b"X" | b"IN" | b"IK" | b"IX" => match self.role {
                 Role::Initiator => assert!(self.public_key_proof.is_some()),
                 Role::Responder => assert!(self.public_key_verifier.is_some()),
+            },
+            _ => {}
+        }
+
+        match self.handshake_pattern.name {
+            b"K" | b"KN" | b"KK" | b"KX" => match self.role {
+                Role::Initiator => assert!(self.remote_public.is_some()),
+                _ => {}
+            },
+            _ => {}
+        }
+
+        match self.handshake_pattern.name {
+            b"NK" | b"KK" | b"XK" | b"IK" => match self.role {
+                Role::Initiator => {}
+                Role::Responder => assert!(self.remote_public.is_some()),
             },
             _ => {}
         }
@@ -145,8 +161,8 @@ impl ConfigBuilder {
         Config {
             handshake_pattern: self.handshake_pattern,
             role: self.role,
-            secret: self.secret.unwrap(),
-            remote_public: self.remote_public.unwrap(),
+            secret: self.secret.expect("secret key was not provided"),
+            remote_public: self.remote_public,
             prologue: self.prologue.unwrap_or(vec![].into_boxed_slice()),
             public_key_proof: self.public_key_proof,
             public_key_verifier: self.public_key_verifier,

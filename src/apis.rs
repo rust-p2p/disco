@@ -47,7 +47,7 @@ impl Session {
             None,
             Some(secret),
             None,
-            Some(remote_public),
+            remote_public,
             preshared_secret,
         );
         let state = SessionState::Handshake(hstate);
