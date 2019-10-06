@@ -5,6 +5,7 @@ use std::vec;
 use crate::config::{DH_SIZE, KEY_SIZE, NOISE_MAX_PLAINTEXT_SIZE, NOISE_TAG_SIZE as TAG_SIZE};
 use crate::patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
 use crate::x25519::{EphemeralSecret, PublicKey, SharedSecret, StaticSecret};
+use failure::Fail;
 use strobe_rs::{AuthError, SecParam, Strobe, STROBE_VERSION};
 
 struct SymmetricState {
@@ -101,20 +102,26 @@ impl SymmetricState {
     }
 }
 
+#[derive(Debug, Fail)]
 pub enum DiscoWriteError {
+    #[fail(display = "message to long")]
     TooLongErr,
 }
 
+#[derive(Debug, Fail)]
 pub enum DiscoReadError {
+    #[fail(display = "{}", _0)]
     ParseErr(&'static str),
+    #[fail(display = "authentication error")]
     AuthErr,
+    #[fail(display = "message to long")]
     TooLongErr,
 }
 
 // An object that encodes handshake state. This is the primary API for initiating Disco sessions.
 pub struct HandshakeState {
     symm_state: SymmetricState,
-    ephemeral_secret: Option<EphemeralSecret>,
+    ephemeral_secret: Option<StaticSecret>,
     ephemeral_public: Option<PublicKey>,
     static_secret: Option<StaticSecret>,
     static_public: Option<PublicKey>,
@@ -142,7 +149,7 @@ impl HandshakeState {
         handshake_pat: HandshakePattern,
         initiator: bool,
         prologue: Box<[u8]>,
-        ephemeral_secret: Option<EphemeralSecret>,
+        ephemeral_secret: Option<StaticSecret>,
         static_secret: Option<StaticSecret>,
         remote_ephemeral: Option<PublicKey>,
         remote_static: Option<PublicKey>,
@@ -182,12 +189,12 @@ impl HandshakeState {
         h
     }
 
-    fn e(&mut self) -> EphemeralSecret {
-        self.ephemeral_secret.take().unwrap()
+    fn e(&mut self) -> StaticSecret {
+        self.ephemeral_secret.clone().expect("ephermal secret")
     }
 
     fn s(&mut self) -> StaticSecret {
-        self.static_secret.take().unwrap()
+        self.static_secret.clone().expect("static secret")
     }
 
     fn e_pub(&self) -> &PublicKey {
@@ -243,10 +250,7 @@ impl HandshakeState {
     }
 
     // Returns (payload, is_handshake_complete)
-    pub(crate) fn write_msg(
-        &mut self,
-        payload: Vec<u8>,
-    ) -> Result<(Vec<u8>, bool), DiscoWriteError> {
+    pub fn write_msg(&mut self, payload: Vec<u8>) -> Result<(Vec<u8>, bool), DiscoWriteError> {
         if !self.should_write {
             panic!("disco: Call to write_msg when it is not our turn to write");
         }
@@ -274,7 +278,7 @@ impl HandshakeState {
         for &token in pat {
             match token {
                 Token::E => {
-                    let e = EphemeralSecret::new(&mut rand::rngs::OsRng);
+                    let e = StaticSecret::new(&mut rand::rngs::OsRng);
                     let e_pub = PublicKey::from(&e);
 
                     msg_buf.extend_from_slice(e_pub.as_bytes());
@@ -349,7 +353,7 @@ impl HandshakeState {
 
     // Returns (payload, is_handshake_complete)
     pub fn read_msg(&mut self, mut msg: Vec<u8>) -> Result<(Vec<u8>, bool), DiscoReadError> {
-        if !self.should_write {
+        if self.should_write {
             panic!("disco: Call to read_msg when it is not our turn to read");
         }
 
