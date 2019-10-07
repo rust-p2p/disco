@@ -1,149 +1,188 @@
 //! Implementation of the HandshakeState.
-use crate::config::{DH_SIZE, KEY_SIZE, MAX_PLAINTEXT_SIZE, TAG_SIZE};
+use crate::config::{DH_SIZE, MAX_MESSAGE_SIZE, TAG_SIZE};
 use crate::patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
 use crate::symmetric_state::SymmetricState;
 use crate::x25519::{PublicKey, SharedSecret, StaticSecret};
+use core::ops::Deref;
 use failure::Fail;
 use std::collections::VecDeque;
 use strobe_rs::{Strobe, STROBE_VERSION};
 
+/// Read error returned by `read_message`.
 #[derive(Debug, Fail)]
-pub enum DiscoWriteError {
-    #[fail(display = "message to long")]
-    TooLongErr,
+pub enum ReadError {
+    /// Message is invalid.
+    #[fail(display = "Invalid message")]
+    InvalidMessage,
+    /// Message authentication failed.
+    #[fail(display = "Invalid mac")]
+    AuthError,
 }
 
-#[derive(Debug, Fail)]
-pub enum DiscoReadError {
-    #[fail(display = "{}", _0)]
-    ParseErr(&'static str),
-    #[fail(display = "authentication error")]
-    AuthErr,
-    #[fail(display = "message to long")]
-    TooLongErr,
+impl From<strobe_rs::AuthError> for ReadError {
+    fn from(_: strobe_rs::AuthError) -> Self {
+        Self::AuthError
+    }
 }
 
-// An object that encodes handshake state. This is the primary API for initiating Disco sessions.
+/// Role in the handshake process.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Role {
+    /// Initiates the handshake.
+    Initiator,
+    /// Responds to the handshake.
+    Responder,
+}
+
+/// The state of the handshake process.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Turn {
+    Read,
+    Write,
+}
+
+struct KeyPair {
+    secret: StaticSecret,
+    public: PublicKey,
+}
+
+impl KeyPair {
+    fn new(secret: StaticSecret) -> Self {
+        let public = PublicKey::from(&secret);
+        Self { secret, public }
+    }
+
+    fn generate() -> Self {
+        let secret = StaticSecret::new(&mut rand::rngs::OsRng);
+        Self::new(secret)
+    }
+
+    fn dh(&self, public: &PublicKey) -> SharedSecret {
+        self.secret.clone().diffie_hellman(public)
+    }
+
+    fn public(&self) -> &PublicKey {
+        &self.public
+    }
+}
+
+struct PanicOption<T>(Option<T>);
+
+impl<T> Deref for PanicOption<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().unwrap()
+    }
+}
+
+/// An object that encodes handshake state. This is the primary API for
+/// initiating Disco sessions.
 pub struct HandshakeState {
-    symm_state: SymmetricState,
-    ephemeral_secret: Option<StaticSecret>,
-    ephemeral_public: Option<PublicKey>,
-    static_secret: Option<StaticSecret>,
-    static_public: Option<PublicKey>,
-    remote_ephemeral: Option<PublicKey>,
-    remote_static: Option<PublicKey>,
-    // Are we the initiator?
-    initiator: bool,
-    message_pats: VecDeque<MessagePattern>,
-    // Is my role to `write_msg` (as opposed to `read_msg`)?
-    should_write: bool,
-    // Pre-shared key.
-    psk: Option<SharedSecret>,
+    /// The SymmetricState object.
+    symmetric_state: SymmetricState,
+    /// The local static key pair.
+    s: PanicOption<KeyPair>,
+    /// The local ephemeral key pair.
+    e: PanicOption<KeyPair>,
+    /// The remote party's static public key.
+    rs: PanicOption<PublicKey>,
+    /// The remote party's ephemeral public key.
+    re: PanicOption<PublicKey>,
+    /// Indicates the role (Initiator or Responder).
+    role: Role,
+    /// A sequence of message patterns. Each message pattern is a sequence of
+    /// tokens from the set (e, s, ee, es, se, ss, psk).
+    message_patterns: VecDeque<MessagePattern>,
+    /// Turn in the handshake process (Read or Write).
+    turn: Turn,
+    /// Pre-shared key.
+    psk: PanicOption<SharedSecret>,
 }
 
 impl HandshakeState {
-    /// Initializes a peer.
-    ///
-    /// * See [`patterns`](../patterns/index.html) for a list of available `HandshakePattern`s
-    /// * `initiator = false` means the instance is for a responder.
-    /// * `prologue` is a byte string record of anything that happened prior the Noise handshake.
-    ///    These bytes are immediately hashed into the symmetric state
-    /// * The ephemeral keypairs are mandatory for all handshake patterns.
-    ///   the function returns a handshakeState object.
+    /// Initializes the HandshakeState.
     pub fn new(
-        handshake_pat: HandshakePattern,
-        initiator: bool,
-        prologue: Box<[u8]>,
-        ephemeral_secret: Option<StaticSecret>,
-        static_secret: Option<StaticSecret>,
-        remote_ephemeral: Option<PublicKey>,
-        remote_static: Option<PublicKey>,
+        handshake_pattern: HandshakePattern,
+        role: Role,
+        prologue: &[u8],
+        s: Option<StaticSecret>,
+        e: Option<StaticSecret>,
+        rs: Option<PublicKey>,
+        re: Option<PublicKey>,
         psk: Option<SharedSecret>,
     ) -> HandshakeState {
-        let proto = format!(
+        let protocol_name = format!(
             "Noise_{}_25519_STROBEv{}",
-            handshake_pat.name, STROBE_VERSION
+            handshake_pattern.name, STROBE_VERSION
         );
-        let mut symm_state = SymmetricState::new(proto.as_bytes());
-        symm_state.mix_hash(&prologue);
+        let mut symmetric_state = SymmetricState::new(protocol_name.as_bytes());
+        symmetric_state.mix_hash(prologue);
 
-        let message_pats = VecDeque::from(handshake_pat.message_pats.to_vec());
-        let should_write = initiator;
+        let message_patterns = VecDeque::from(handshake_pattern.message_patterns.to_vec());
+        let turn = match role {
+            Role::Initiator => Turn::Write,
+            Role::Responder => Turn::Read,
+        };
 
-        let ephemeral_public = ephemeral_secret.as_ref().map(PublicKey::from);
-        let static_public = static_secret.as_ref().map(PublicKey::from);
+        let s = PanicOption(s.map(KeyPair::new));
+        let e = PanicOption(e.map(KeyPair::new));
+        let rs = PanicOption(rs);
+        let re = PanicOption(re);
+        let psk = PanicOption(psk);
 
         let mut h = HandshakeState {
-            symm_state,
-            ephemeral_secret,
-            ephemeral_public,
-            static_secret,
-            static_public,
-            remote_ephemeral,
-            remote_static,
-            initiator,
-            message_pats,
-            should_write,
+            symmetric_state,
+            s,
+            e,
+            rs,
+            re,
+            role,
+            message_patterns,
+            turn,
             psk,
         };
 
-        h.initialize(&handshake_pat.pre_message_pats);
+        h.initialize(&handshake_pattern.pre_message_patterns);
         h
     }
 
-    fn e(&mut self) -> StaticSecret {
-        self.ephemeral_secret.clone().expect("ephermal secret")
-    }
-
-    fn s(&mut self) -> StaticSecret {
-        self.static_secret.clone().expect("static secret")
-    }
-
-    fn e_pub(&self) -> &PublicKey {
-        self.static_public.as_ref().unwrap()
-    }
-
-    fn s_pub(&self) -> &PublicKey {
-        self.static_public.as_ref().unwrap()
-    }
-
-    fn re(&self) -> &PublicKey {
-        self.remote_ephemeral.as_ref().unwrap()
-    }
-
-    fn rs(&self) -> &PublicKey {
-        self.remote_static.as_ref().unwrap()
-    }
-
-    // Calls mix_hash() once for each public key listed in the pre-messages from handshake_pattern,
-    // with the specified public key as input (see Section 7 for an explanation of pre-messages).
-    // If both initiator and responder have pre-messages, the initiator's public keys are hashed
-    // first.
-    fn initialize(&mut self, pre_message_pats: &PreMessagePatternPair) {
+    /// Calls mix_hash() once for each public key listed in the pre-messages
+    /// from handshake_pattern, with the specified public key as input (see
+    /// Section 7 for an explanation of pre-messages).
+    /// If both initiator and responder have pre-messages, the initiator's
+    /// public keys are hashed first.
+    fn initialize(&mut self, pre_message_patterns: &PreMessagePatternPair) {
         // Initiator pre-message pattern
-        for &token in pre_message_pats.initiator {
+        for token in pre_message_patterns.initiator {
             if let Token::S = token {
-                if self.initiator {
-                    let s = self.s_pub().as_bytes().to_vec();
-                    self.symm_state.mix_hash(&s);
-                } else {
-                    let rs = self.rs().as_bytes().to_vec();
-                    self.symm_state.mix_hash(&rs);
+                match self.role {
+                    Role::Initiator => {
+                        let s = self.s.public().clone();
+                        self.symmetric_state.mix_hash(s.as_bytes());
+                    }
+                    Role::Responder => {
+                        let rs = self.rs.clone();
+                        self.symmetric_state.mix_hash(rs.as_bytes());
+                    }
                 }
             } else {
-                panic!("disco: Token of pre-message not supported: {:?}", token)
+                panic!("disco: Pre-message token not supported: {:?}", token)
             }
         }
 
         // Responder pre-message pattern
-        for &token in pre_message_pats.responder {
+        for token in pre_message_patterns.responder {
             if let Token::S = token {
-                if self.initiator {
-                    let rs = self.rs().as_bytes().to_vec();
-                    self.symm_state.mix_hash(&rs);
-                } else {
-                    let s = self.s_pub().as_bytes().to_vec();
-                    self.symm_state.mix_hash(&s);
+                match self.role {
+                    Role::Initiator => {
+                        let rs = self.rs.clone();
+                        self.symmetric_state.mix_hash(rs.as_bytes());
+                    }
+                    Role::Responder => {
+                        let s = self.s.public().clone();
+                        self.symmetric_state.mix_hash(s.as_bytes());
+                    }
                 }
             } else {
                 panic!("disco: Pre-message token not supported: {:?}", token)
@@ -151,229 +190,165 @@ impl HandshakeState {
         }
     }
 
-    // Returns (payload, is_handshake_complete)
-    pub fn write_msg(&mut self, payload: Vec<u8>) -> Result<(Vec<u8>, bool), DiscoWriteError> {
-        if !self.should_write {
-            panic!("disco: Call to write_msg when it is not our turn to write");
-        }
+    /// Returns if the handshake is complete.
+    pub fn is_handshake_complete(&self) -> bool {
+        self.message_patterns.len() == 0
+    }
 
-        if payload.len() > MAX_PLAINTEXT_SIZE {
-            return Err(DiscoWriteError::TooLongErr);
-        }
+    /// Takes a payload byte sequence with may be zero-length, and returns a
+    /// message buffer.
+    pub fn write_message(&mut self, payload: &[u8]) -> Vec<u8> {
+        assert!(self.turn == Turn::Write);
+        assert!(payload.len() <= MAX_MESSAGE_SIZE - TAG_SIZE * 2 - DH_SIZE * 2);
 
-        // If there are no patterns left or the next pattern is length 0, i.e., if we can't
-        // continue, then panic
-        if self
-            .message_pats
-            .get(0)
-            .map(|pat| pat.len() == 0)
-            .unwrap_or(true)
-        {
-            panic!("disco: No more tokens or message patterns to write");
-        }
+        let pattern = self
+            .message_patterns
+            .pop_front()
+            .expect("No more patterns left to process");
+        let mut message = Vec::with_capacity(MAX_MESSAGE_SIZE);
 
-        // This will be our output
-        let mut msg_buf = Vec::new();
-
-        // We can unwrap because we just checked message_pats.len() != 0
-        let pat = self.message_pats.pop_front().unwrap();
-        for &token in pat {
+        for token in pattern {
             match token {
                 Token::E => {
-                    let e = StaticSecret::new(&mut rand::rngs::OsRng);
-                    let e_pub = PublicKey::from(&e);
-
-                    msg_buf.extend_from_slice(e_pub.as_bytes());
-                    self.symm_state.mix_hash(e_pub.as_bytes());
-                    if self.psk.is_some() {
-                        self.symm_state.mix_key(e_pub.as_bytes());
-                    }
-
-                    self.ephemeral_secret = Some(e);
-                    self.ephemeral_public = Some(e_pub);
+                    let e = KeyPair::generate();
+                    message.extend_from_slice(e.public().as_bytes());
+                    self.symmetric_state.mix_hash(e.public().as_bytes());
+                    self.e = PanicOption(Some(e));
                 }
 
                 Token::S => {
-                    let s = self.s_pub().as_bytes().to_vec();
-                    let ct = self.symm_state.encrypt_and_hash(&s);
-                    msg_buf.extend(ct);
+                    let s = self.s.public();
+                    let ct = self.symmetric_state.encrypt_and_hash(s.as_bytes());
+                    message.extend(ct);
                 }
 
                 Token::EE => {
-                    let ee = self.e().diffie_hellman(self.re());
-                    self.symm_state.mix_key(ee.as_bytes());
+                    let ee = self.e.dh(&self.re);
+                    self.symmetric_state.mix_key(ee.as_bytes());
                 }
 
                 Token::ES => {
-                    if self.initiator {
-                        let es = self.e().diffie_hellman(self.rs());
-                        self.symm_state.mix_key(es.as_bytes());
-                    } else {
-                        let se = self.s().diffie_hellman(self.re());
-                        self.symm_state.mix_key(se.as_bytes());
-                    }
+                    let es = match self.role {
+                        Role::Initiator => self.e.dh(&self.rs),
+                        Role::Responder => self.s.dh(&self.re),
+                    };
+                    self.symmetric_state.mix_key(es.as_bytes());
                 }
 
                 Token::SE => {
-                    if self.initiator {
-                        let se = self.s().diffie_hellman(self.re());
-                        self.symm_state.mix_key(se.as_bytes());
-                    } else {
-                        let es = self.e().diffie_hellman(self.rs());
-                        self.symm_state.mix_key(es.as_bytes());
-                    }
+                    let se = match self.role {
+                        Role::Initiator => self.s.dh(&self.re),
+                        Role::Responder => self.e.dh(&self.rs),
+                    };
+                    self.symmetric_state.mix_key(se.as_bytes());
                 }
 
                 Token::SS => {
-                    let ss = self.s().diffie_hellman(self.rs());
-                    self.symm_state.mix_key(ss.as_bytes());
+                    let ss = self.s.dh(&self.rs);
+                    self.symmetric_state.mix_key(ss.as_bytes());
                 }
 
                 Token::Psk => {
-                    let psk = self
-                        .psk
-                        .as_ref()
-                        .expect("disco: In processing psk token, no preshared key is set");
-                    self.symm_state.mix_key_and_hash(psk.as_bytes());
+                    self.symmetric_state.mix_key_and_hash(self.psk.as_bytes());
                 }
             }
         }
 
-        let ct = self.symm_state.encrypt_and_hash(&payload);
-        msg_buf.extend(ct);
+        let ct = self.symmetric_state.encrypt_and_hash(&payload);
+        message.extend(ct);
 
         // Next time it's our turn to read
-        self.should_write = false;
+        self.turn = Turn::Read;
 
-        // If there's nothing left to read, say we're ready to split()
-        if self.message_pats.len() == 0 {
-            Ok((msg_buf, true))
-        } else {
-            Ok((msg_buf, false))
-        }
+        message
     }
 
-    // Returns (payload, is_handshake_complete)
-    pub fn read_msg(&mut self, mut msg: Vec<u8>) -> Result<(Vec<u8>, bool), DiscoReadError> {
-        if self.should_write {
-            panic!("disco: Call to read_msg when it is not our turn to read");
-        }
+    /// Takes a byte sequence containing a Noise handshake message and returns
+    /// the decrypted payload.
+    pub fn read_message(&mut self, message: &[u8]) -> Result<Vec<u8>, ReadError> {
+        assert!(self.turn == Turn::Read);
+        assert!(message.len() <= MAX_MESSAGE_SIZE);
 
-        if msg.len() > MAX_PLAINTEXT_SIZE {
-            return Err(DiscoReadError::TooLongErr);
-        }
+        let pattern = self
+            .message_patterns
+            .pop_front()
+            .expect("No more patterns left to process");
+        let mut i = 0;
 
-        // If there are no patterns left or the next pattern is length 0, i.e., if we can't
-        // continue, then panic
-        if self
-            .message_pats
-            .get(0)
-            .map(|pat| pat.len() == 0)
-            .unwrap_or(true)
-        {
-            panic!("disco: No more tokens or message patterns to write");
-        }
-
-        // We can unwrap because we just checked message_pats.len() != 0
-        let pat = self.message_pats.pop_front().unwrap();
-        for &token in pat {
+        for token in pattern {
             match token {
                 Token::E => {
-                    if msg.len() < DH_SIZE {
-                        return Err(DiscoReadError::ParseErr(
-                            "disco: In processing e token, msg too short",
-                        ));
+                    let i2 = i + DH_SIZE;
+                    if i2 >= message.len() {
+                        return Err(ReadError::InvalidMessage);
                     }
-                    // tmp holds the rest of the message, msg holds the pubkey
-                    let tmp = msg.split_off(DH_SIZE);
-                    let mut e = [0u8; KEY_SIZE];
-                    e.copy_from_slice(&*msg);
-                    self.remote_ephemeral = Some(PublicKey::from(e));
-                    msg = tmp;
+                    let mut e = [0u8; DH_SIZE];
+                    e.copy_from_slice(&message[i..i2]);
+                    self.symmetric_state.mix_hash(&e);
+                    self.re = PanicOption(Some(PublicKey::from(e)));
+                    i = i2;
                 }
 
                 Token::S => {
-                    let tag_size = if self.symm_state.is_keyed() {
+                    let tag_size = if self.symmetric_state.is_keyed() {
                         TAG_SIZE
                     } else {
                         0
                     };
-                    let len = msg.len();
-                    if len < DH_SIZE + tag_size {
-                        return Err(DiscoReadError::ParseErr(
-                            "disco: In processing s token, msg too short",
-                        ));
+                    let i2 = i + DH_SIZE + tag_size;
+                    if i2 >= message.len() {
+                        return Err(ReadError::InvalidMessage);
                     }
-                    // tmp holds the rest of the message, msg holds the pubkey
-                    let tmp = msg.split_off(DH_SIZE + tag_size);
-                    let ct = msg;
-                    msg = tmp;
-                    let pt = self
-                        .symm_state
-                        .decrypt_and_hash(&ct)
-                        .map_err(|_| DiscoReadError::AuthErr)?;
-                    let mut s = [0u8; DH_SIZE];
-                    s.copy_from_slice(&*pt);
-                    self.remote_static = Some(PublicKey::from(s));
+                    let pt = self.symmetric_state.decrypt_and_hash(&message[i..i2])?;
+                    let mut rs = [0u8; DH_SIZE];
+                    rs.copy_from_slice(&pt);
+                    self.rs = PanicOption(Some(PublicKey::from(rs)));
+                    i = i2;
                 }
 
                 Token::EE => {
-                    let ee = self.e().diffie_hellman(self.re());
-                    self.symm_state.mix_key(ee.as_bytes());
+                    let ee = self.e.dh(&self.re);
+                    self.symmetric_state.mix_key(ee.as_bytes());
                 }
 
                 Token::ES => {
-                    if self.initiator {
-                        let es = self.e().diffie_hellman(self.rs());
-                        self.symm_state.mix_key(es.as_bytes());
-                    } else {
-                        let se = self.s().diffie_hellman(self.re());
-                        self.symm_state.mix_key(se.as_bytes());
-                    }
+                    let es = match self.role {
+                        Role::Initiator => self.e.dh(&self.rs),
+                        Role::Responder => self.s.dh(&self.re),
+                    };
+                    self.symmetric_state.mix_key(es.as_bytes());
                 }
 
                 Token::SE => {
-                    if self.initiator {
-                        let se = self.s().diffie_hellman(self.re());
-                        self.symm_state.mix_key(se.as_bytes());
-                    } else {
-                        let es = self.e().diffie_hellman(self.rs());
-                        self.symm_state.mix_key(es.as_bytes());
-                    }
+                    let se = match self.role {
+                        Role::Initiator => self.s.dh(&self.re),
+                        Role::Responder => self.e.dh(&self.rs),
+                    };
+                    self.symmetric_state.mix_key(se.as_bytes());
                 }
 
                 Token::SS => {
-                    let ss = self.s().diffie_hellman(self.rs());
-                    self.symm_state.mix_key(ss.as_bytes());
+                    let ss = self.s.dh(&self.rs);
+                    self.symmetric_state.mix_key(ss.as_bytes());
                 }
 
                 Token::Psk => {
-                    let psk = self
-                        .psk
-                        .as_ref()
-                        .expect("disco: In processing psk token, no preshared key is set");
-                    self.symm_state.mix_key_and_hash(psk.as_bytes());
+                    self.symmetric_state.mix_key_and_hash(self.psk.as_bytes());
                 }
             }
         }
 
-        let pt = self
-            .symm_state
-            .decrypt_and_hash(&msg)
-            .map_err(|_| DiscoReadError::AuthErr)?;
+        let pt = self.symmetric_state.decrypt_and_hash(&message[i..])?;
 
-        // Next time it's our turn to read
-        self.should_write = true;
+        // Next time it's our turn to write
+        self.turn = Turn::Write;
 
-        // If there's nothing left to read, say we're ready to split()
-        if self.message_pats.len() == 0 {
-            Ok((pt, true))
-        } else {
-            Ok((pt, false))
-        }
+        Ok(pt)
     }
 
+    /// Returns a pair of Strobe objects for encrypting transport messages.
     pub fn finalize(self) -> (Strobe, Strobe) {
-        self.symm_state.split()
+        assert!(self.is_handshake_complete());
+        self.symmetric_state.split()
     }
 }

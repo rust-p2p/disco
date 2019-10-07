@@ -1,15 +1,15 @@
 //! A rust implementation of the disco protocol.
 #![deny(missing_docs)]
-#![deny(warnings)]
-#![allow(unused)]
+//#![deny(warnings)]
 
-mod apis;
 mod config;
 mod handshake_state;
 pub mod patterns;
+mod session;
 pub mod symmetric;
 mod symmetric_state;
 
-pub use apis::Session;
-pub use config::{ConfigBuilder, PublicKeyVerifier, Role};
+pub use config::{ConfigBuilder, PublicKeyVerifier};
+pub use handshake_state::Role;
+pub use session::Session;
 pub use x25519_dalek as x25519;

@@ -44,8 +44,8 @@ pub(crate) struct PreMessagePatternPair {
 #[derive(Eq, PartialEq)]
 pub struct HandshakePattern {
     pub(crate) name: &'static str,
-    pub(crate) pre_message_pats: PreMessagePatternPair,
-    pub(crate) message_pats: &'static [MessagePattern],
+    pub(crate) pre_message_patterns: PreMessagePatternPair,
+    pub(crate) message_patterns: &'static [MessagePattern],
 }
 
 // 7.2 - One-way Patterns
@@ -54,11 +54,11 @@ pub struct HandshakePattern {
 /// can only receive data and cannot reply back.
 pub const NOISE_N: HandshakePattern = HandshakePattern {
     name: "N",
-    pre_message_pats: PreMessagePatternPair {
+    pre_message_patterns: PreMessagePatternPair {
         initiator: &[],
         responder: &[Token::S],
     },
-    message_pats: &[&[Token::E, Token::ES], &[]],
+    message_patterns: &[&[Token::E, Token::ES], &[]],
 };
 
 /// A one-way pattern where a client can send data to a server with a known static key. The server
@@ -66,11 +66,11 @@ pub const NOISE_N: HandshakePattern = HandshakePattern {
 /// key.
 pub const NOISE_K: HandshakePattern = HandshakePattern {
     name: "K",
-    pre_message_pats: PreMessagePatternPair {
+    pre_message_patterns: PreMessagePatternPair {
         initiator: &[Token::S],
         responder: &[Token::S],
     },
-    message_pats: &[&[Token::E, Token::ES, Token::SS], &[]],
+    message_patterns: &[&[Token::E, Token::ES, Token::SS], &[]],
 };
 
 /// A one-way pattern where a client can send data to a server with a known static key. The server
@@ -78,11 +78,11 @@ pub const NOISE_K: HandshakePattern = HandshakePattern {
 /// transmitted as part of the handshake.
 pub const NOISE_X: HandshakePattern = HandshakePattern {
     name: "X",
-    pre_message_pats: PreMessagePatternPair {
+    pre_message_patterns: PreMessagePatternPair {
         initiator: &[],
         responder: &[Token::S],
     },
-    message_pats: &[&[Token::E, Token::ES, Token::S, Token::SS], &[]],
+    message_patterns: &[&[Token::E, Token::ES, Token::S, Token::SS], &[]],
 };
 
 // 7.3 - Interactive pats
@@ -90,11 +90,11 @@ pub const NOISE_X: HandshakePattern = HandshakePattern {
 /// A pattern where both the client static key and the server static key are known.
 pub const NOISE_KK: HandshakePattern = HandshakePattern {
     name: "KK",
-    pre_message_pats: PreMessagePatternPair {
+    pre_message_patterns: PreMessagePatternPair {
         initiator: &[Token::S],
         responder: &[Token::S],
     },
-    message_pats: &[
+    message_patterns: &[
         &[Token::E, Token::ES, Token::SS],
         &[Token::E, Token::EE, Token::SE],
     ],
@@ -103,11 +103,11 @@ pub const NOISE_KK: HandshakePattern = HandshakePattern {
 /// A pattern where the client and server static key are transmitted.
 pub const NOISE_XX: HandshakePattern = HandshakePattern {
     name: "XX",
-    pre_message_pats: PreMessagePatternPair {
+    pre_message_patterns: PreMessagePatternPair {
         initiator: &[],
         responder: &[],
     },
-    message_pats: &[
+    message_patterns: &[
         &[Token::E],
         &[Token::E, Token::EE, Token::S, Token::ES],
         &[Token::S, Token::SE],

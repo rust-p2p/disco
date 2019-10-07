@@ -24,18 +24,18 @@ fn test_kk_session() {
     let mut session2 = Session::new(config2);
 
     println!("->");
-    let ct = session1.write_message(b"e es ss".to_vec()).expect("ct");
-    let pt = session2.read_message(ct).expect("pt");
+    let ct = session1.write_message(b"e es ss");
+    let pt = session2.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"e es ss");
 
     println!("<-");
-    let ct = session2.write_message(b"e ee se".to_vec()).expect("ct");
-    let pt = session1.read_message(ct).expect("pt");
+    let ct = session2.write_message(b"e ee se");
+    let pt = session1.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"e ee se");
 
     println!("->");
-    let ct = session1.write_message(b"hello".to_vec()).expect("ct");
-    let pt = session2.read_message(ct).expect("pt");
+    let ct = session1.write_message(b"hello");
+    let pt = session2.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"hello");
 }
 
@@ -71,22 +71,22 @@ fn test_xx_session() {
     let mut session2 = Session::new(config2);
 
     println!("->");
-    let ct = session1.write_message(b"e".to_vec()).expect("ct");
-    let pt = session2.read_message(ct).expect("pt");
+    let ct = session1.write_message(b"e");
+    let pt = session2.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"e");
 
     println!("<-");
-    let ct = session2.write_message(b"e ee s es".to_vec()).expect("ct");
-    let pt = session1.read_message(ct).expect("pt");
+    let ct = session2.write_message(b"e ee s es");
+    let pt = session1.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"e ee s es");
 
     println!("->");
-    let ct = session1.write_message(b"s se".to_vec()).expect("ct");
-    let pt = session2.read_message(ct).expect("pt");
+    let ct = session1.write_message(b"s se");
+    let pt = session2.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"s se");
 
     println!("<-");
-    let ct = session2.write_message(b"hello".to_vec()).expect("ct");
-    let pt = session1.read_message(ct).expect("pt");
+    let ct = session2.write_message(b"hello");
+    let pt = session1.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"hello");
 }

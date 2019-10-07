@@ -1,28 +1,14 @@
+use crate::handshake_state::Role;
 use crate::patterns::HandshakePattern;
 use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
 
-// The following constants represent the details of this implementation of the
-// Noise specification.
-pub const DISCO_DRAFT_VERSION: &[u8] = b"3";
-pub const NOISE_DH: &[u8] = b"25519";
-
 // The following constants are taken directly from the Noise specification.
-pub const MAX_MSG_SIZE: usize = 65535;
+pub const MAX_MESSAGE_SIZE: usize = 65535;
 pub const TAG_SIZE: usize = 16;
-pub const MAX_PLAINTEXT_SIZE: usize = MAX_MSG_SIZE - TAG_SIZE;
 
 // Should match SharedSecret and StaticSecret defined in x25519.
 pub const DH_SIZE: usize = 32;
 pub const KEY_SIZE: usize = 32;
-
-/// Role in the handshake process.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Role {
-    /// Initiates the handshake.
-    Initiator,
-    /// Responds to the handshake.
-    Responder,
-}
 
 /// Public key verifier.
 pub trait PublicKeyVerifier {
