@@ -33,7 +33,7 @@ impl Session {
             handshake_pattern,
             role,
             &prologue,
-            Some(secret),
+            secret,
             None,
             remote_public,
             None,

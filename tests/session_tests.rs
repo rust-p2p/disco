@@ -1,4 +1,4 @@
-use disco_rs::patterns::{NOISE_KK, NOISE_XX};
+use disco_rs::patterns::{NOISE_KK, NOISE_NNPSK2, NOISE_XX};
 use disco_rs::x25519::{PublicKey, StaticSecret};
 use disco_rs::{ConfigBuilder, PublicKeyVerifier, Role, Session};
 
@@ -86,6 +86,41 @@ fn test_xx_session() {
     assert_eq!(&pt, b"s se");
 
     println!("<-");
+    let ct = session2.write_message(b"hello");
+    let pt = session1.read_message(&ct).expect("pt");
+    assert_eq!(&pt, b"hello");
+}
+
+#[test]
+fn test_nnpsk2_session() {
+    // Also test prologue and rekeying.
+    let config1 = ConfigBuilder::new(NOISE_NNPSK2, Role::Initiator)
+        .prologue(b"prologue".to_vec())
+        .preshared_secret([0u8; 32])
+        .build();
+
+    let config2 = ConfigBuilder::new(NOISE_NNPSK2, Role::Responder)
+        .prologue(b"prologue".to_vec())
+        .preshared_secret([0u8; 32])
+        .build();
+
+    let mut session1 = Session::new(config1);
+    let mut session2 = Session::new(config2);
+
+    println!("->");
+    let ct = session1.write_message(b"e");
+    let pt = session2.read_message(&ct).expect("pt");
+    assert_eq!(&pt, b"e");
+
+    println!("<-");
+    let ct = session2.write_message(b"e ee psk");
+    let pt = session1.read_message(&ct).expect("pt");
+    assert_eq!(&pt, b"e ee psk");
+
+    session1.rekey_rx();
+    session2.rekey_tx();
+
+    println!("->");
     let ct = session2.write_message(b"hello");
     let pt = session1.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"hello");

@@ -87,7 +87,7 @@ pub const NOISE_X: HandshakePattern = HandshakePattern {
 
 // 7.3 - Interactive pats
 
-/// A pattern where both the client static key and the server static key are known.
+/// Both the client static key and the server static key are known.
 pub const NOISE_KK: HandshakePattern = HandshakePattern {
     name: "KK",
     pre_message_patterns: PreMessagePatternPair {
@@ -100,7 +100,7 @@ pub const NOISE_KK: HandshakePattern = HandshakePattern {
     ],
 };
 
-/// A pattern where the client and server static key are transmitted.
+/// Client and server static key are transmitted.
 pub const NOISE_XX: HandshakePattern = HandshakePattern {
     name: "XX",
     pre_message_patterns: PreMessagePatternPair {
@@ -111,5 +111,18 @@ pub const NOISE_XX: HandshakePattern = HandshakePattern {
         &[Token::E],
         &[Token::E, Token::EE, Token::S, Token::ES],
         &[Token::S, Token::SE],
+    ],
+};
+
+/// Client and server already share a secret.
+pub const NOISE_NNPSK2: HandshakePattern = HandshakePattern {
+    name: "NNpsk2",
+    pre_message_patterns: PreMessagePatternPair {
+        initiator: &[],
+        responder: &[],
+    },
+    message_patterns: &[
+        &[Token::E],
+        &[Token::E, Token::EE, Token::Psk],
     ],
 };

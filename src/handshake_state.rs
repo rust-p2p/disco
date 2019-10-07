@@ -1,5 +1,5 @@
 //! Implementation of the HandshakeState.
-use crate::config::{DH_SIZE, MAX_MESSAGE_SIZE, TAG_SIZE};
+use crate::config::{DH_SIZE, KEY_SIZE, MAX_MESSAGE_SIZE, TAG_SIZE};
 use crate::patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
 use crate::symmetric_state::SymmetricState;
 use crate::x25519::{PublicKey, SharedSecret, StaticSecret};
@@ -97,7 +97,7 @@ pub struct HandshakeState {
     /// Turn in the handshake process (Read or Write).
     turn: Turn,
     /// Pre-shared key.
-    psk: PanicOption<SharedSecret>,
+    psk: Option<[u8; KEY_SIZE]>,
 }
 
 impl HandshakeState {
@@ -110,7 +110,7 @@ impl HandshakeState {
         e: Option<StaticSecret>,
         rs: Option<PublicKey>,
         re: Option<PublicKey>,
-        psk: Option<SharedSecret>,
+        psk: Option<[u8; KEY_SIZE]>,
     ) -> HandshakeState {
         let protocol_name = format!(
             "Noise_{}_25519_STROBEv{}",
@@ -129,7 +129,6 @@ impl HandshakeState {
         let e = PanicOption(e.map(KeyPair::new));
         let rs = PanicOption(rs);
         let re = PanicOption(re);
-        let psk = PanicOption(psk);
 
         let mut h = HandshakeState {
             symmetric_state,
@@ -213,6 +212,9 @@ impl HandshakeState {
                     let e = KeyPair::generate();
                     message.extend_from_slice(e.public().as_bytes());
                     self.symmetric_state.mix_hash(e.public().as_bytes());
+                    if self.psk.is_some() {
+                        self.symmetric_state.mix_key(e.public().as_bytes());
+                    }
                     self.e = PanicOption(Some(e));
                 }
 
@@ -249,7 +251,8 @@ impl HandshakeState {
                 }
 
                 Token::Psk => {
-                    self.symmetric_state.mix_key_and_hash(self.psk.as_bytes());
+                    let psk = self.psk.as_ref().unwrap();
+                    self.symmetric_state.mix_key_and_hash(psk);
                 }
             }
         }
@@ -285,6 +288,9 @@ impl HandshakeState {
                     let mut e = [0u8; DH_SIZE];
                     e.copy_from_slice(&message[i..i2]);
                     self.symmetric_state.mix_hash(&e);
+                    if self.psk.is_some() {
+                        self.symmetric_state.mix_key(&e);
+                    }
                     self.re = PanicOption(Some(PublicKey::from(e)));
                     i = i2;
                 }
@@ -333,7 +339,8 @@ impl HandshakeState {
                 }
 
                 Token::Psk => {
-                    self.symmetric_state.mix_key_and_hash(self.psk.as_bytes());
+                    let psk = self.psk.as_ref().unwrap();
+                    self.symmetric_state.mix_key_and_hash(psk);
                 }
             }
         }

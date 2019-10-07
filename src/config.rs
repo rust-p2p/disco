@@ -1,6 +1,6 @@
 use crate::handshake_state::Role;
 use crate::patterns::HandshakePattern;
-use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
+use x25519_dalek::{PublicKey, StaticSecret};
 
 // The following constants are taken directly from the Noise specification.
 pub const MAX_MESSAGE_SIZE: usize = 65535;
@@ -19,12 +19,12 @@ pub trait PublicKeyVerifier {
 pub struct Config {
     pub(crate) handshake_pattern: HandshakePattern,
     pub(crate) role: Role,
-    pub(crate) secret: StaticSecret,
+    pub(crate) secret: Option<StaticSecret>,
     pub(crate) remote_public: Option<PublicKey>,
     pub(crate) prologue: Box<[u8]>,
     pub(crate) public_key_proof: Option<Box<[u8]>>,
     pub(crate) public_key_verifier: Option<Box<dyn PublicKeyVerifier>>,
-    pub(crate) preshared_secret: Option<SharedSecret>,
+    pub(crate) preshared_secret: Option<[u8; KEY_SIZE]>,
     pub(crate) half_duplex: bool,
 }
 
@@ -37,7 +37,7 @@ pub struct ConfigBuilder {
     prologue: Option<Box<[u8]>>,
     public_key_proof: Option<Box<[u8]>>,
     public_key_verifier: Option<Box<dyn PublicKeyVerifier>>,
-    preshared_secret: Option<SharedSecret>,
+    preshared_secret: Option<[u8; KEY_SIZE]>,
     half_duplex: bool,
 }
 
@@ -96,7 +96,7 @@ impl ConfigBuilder {
     }
 
     /// A pre-shared key for handshake patterns including a `psk` token.
-    pub fn preshared_secret(mut self, secret: SharedSecret) -> Self {
+    pub fn preshared_secret(mut self, secret: [u8; KEY_SIZE]) -> Self {
         self.preshared_secret = Some(secret);
         self
     }
@@ -153,7 +153,7 @@ impl ConfigBuilder {
         Config {
             handshake_pattern: self.handshake_pattern,
             role: self.role,
-            secret: self.secret.expect("secret key was not provided"),
+            secret: self.secret,
             remote_public: self.remote_public,
             prologue: self.prologue.unwrap_or(vec![].into_boxed_slice()),
             public_key_proof: self.public_key_proof,
