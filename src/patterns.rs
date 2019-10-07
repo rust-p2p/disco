@@ -43,7 +43,7 @@ pub(crate) struct PreMessagePatternPair {
 /// Handshake protocol specification.
 #[derive(Eq, PartialEq)]
 pub struct HandshakePattern {
-    pub(crate) name: &'static [u8],
+    pub(crate) name: &'static str,
     pub(crate) pre_message_pats: PreMessagePatternPair,
     pub(crate) message_pats: &'static [MessagePattern],
 }
@@ -53,7 +53,7 @@ pub struct HandshakePattern {
 /// A one-way pattern where a client can send data to a server with a known static key. The server
 /// can only receive data and cannot reply back.
 pub const NOISE_N: HandshakePattern = HandshakePattern {
-    name: b"N",
+    name: "N",
     pre_message_pats: PreMessagePatternPair {
         initiator: &[],
         responder: &[Token::S],
@@ -65,7 +65,7 @@ pub const NOISE_N: HandshakePattern = HandshakePattern {
 /// can only receive data and cannot reply back. The server authenticates the client via a known
 /// key.
 pub const NOISE_K: HandshakePattern = HandshakePattern {
-    name: b"K",
+    name: "K",
     pre_message_pats: PreMessagePatternPair {
         initiator: &[Token::S],
         responder: &[Token::S],
@@ -77,7 +77,7 @@ pub const NOISE_K: HandshakePattern = HandshakePattern {
 /// can only receive data and cannot reply back. The server authenticates the client via a key
 /// transmitted as part of the handshake.
 pub const NOISE_X: HandshakePattern = HandshakePattern {
-    name: b"X",
+    name: "X",
     pre_message_pats: PreMessagePatternPair {
         initiator: &[],
         responder: &[Token::S],
@@ -89,7 +89,7 @@ pub const NOISE_X: HandshakePattern = HandshakePattern {
 
 /// A pattern where both the client static key and the server static key are known.
 pub const NOISE_KK: HandshakePattern = HandshakePattern {
-    name: b"KK",
+    name: "KK",
     pre_message_pats: PreMessagePatternPair {
         initiator: &[Token::S],
         responder: &[Token::S],
@@ -102,7 +102,7 @@ pub const NOISE_KK: HandshakePattern = HandshakePattern {
 
 /// A pattern where the client and server static key are transmitted.
 pub const NOISE_XX: HandshakePattern = HandshakePattern {
-    name: b"XX",
+    name: "XX",
     pre_message_pats: PreMessagePatternPair {
         initiator: &[],
         responder: &[],

@@ -7,9 +7,9 @@ pub const DISCO_DRAFT_VERSION: &[u8] = b"3";
 pub const NOISE_DH: &[u8] = b"25519";
 
 // The following constants are taken directly from the Noise specification.
-pub const NOISE_MAX_MSG_SIZE: usize = 65535;
-pub const NOISE_TAG_SIZE: usize = 16;
-pub const NOISE_MAX_PLAINTEXT_SIZE: usize = NOISE_MAX_MSG_SIZE - NOISE_TAG_SIZE;
+pub const MAX_MSG_SIZE: usize = 65535;
+pub const TAG_SIZE: usize = 16;
+pub const MAX_PLAINTEXT_SIZE: usize = MAX_MSG_SIZE - TAG_SIZE;
 
 // Should match SharedSecret and StaticSecret defined in x25519.
 pub const DH_SIZE: usize = 32;
@@ -128,7 +128,7 @@ impl ConfigBuilder {
     /// Build a disco config.
     pub fn build(self) -> Config {
         match self.handshake_pattern.name {
-            b"NX" | b"KX" | b"XX" | b"IX" => match self.role {
+            "NX" | "KX" | "XX" | "IX" => match self.role {
                 Role::Initiator => assert!(self.public_key_verifier.is_some()),
                 Role::Responder => assert!(self.public_key_proof.is_some()),
             },
@@ -136,7 +136,7 @@ impl ConfigBuilder {
         }
 
         match self.handshake_pattern.name {
-            b"XN" | b"XK" | b"XX" | b"X" | b"IN" | b"IK" | b"IX" => match self.role {
+            "XN" | "XK" | "XX" | "X" | "IN" | "IK" | "IX" => match self.role {
                 Role::Initiator => assert!(self.public_key_proof.is_some()),
                 Role::Responder => assert!(self.public_key_verifier.is_some()),
             },
@@ -144,7 +144,7 @@ impl ConfigBuilder {
         }
 
         match self.handshake_pattern.name {
-            b"K" | b"KN" | b"KK" | b"KX" => match self.role {
+            "K" | "KN" | "KK" | "KX" => match self.role {
                 Role::Initiator => assert!(self.remote_public.is_some()),
                 _ => {}
             },
@@ -152,7 +152,7 @@ impl ConfigBuilder {
         }
 
         match self.handshake_pattern.name {
-            b"NK" | b"KK" | b"XK" | b"IK" => match self.role {
+            "NK" | "KK" | "XK" | "IK" => match self.role {
                 Role::Initiator => {}
                 Role::Responder => assert!(self.remote_public.is_some()),
             },
@@ -160,7 +160,7 @@ impl ConfigBuilder {
         }
 
         match self.handshake_pattern.name {
-            b"NNPsk2" => assert!(self.preshared_secret.is_some()),
+            "NNPsk2" => assert!(self.preshared_secret.is_some()),
             _ => {}
         }
 

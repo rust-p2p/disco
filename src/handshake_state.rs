@@ -1,106 +1,11 @@
-use std::collections::VecDeque;
-use std::iter;
-use std::vec;
-
-use crate::config::{DH_SIZE, KEY_SIZE, NOISE_MAX_PLAINTEXT_SIZE, NOISE_TAG_SIZE as TAG_SIZE};
+//! Implementation of the HandshakeState.
+use crate::config::{DH_SIZE, KEY_SIZE, MAX_PLAINTEXT_SIZE, TAG_SIZE};
 use crate::patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
+use crate::symmetric_state::SymmetricState;
 use crate::x25519::{PublicKey, SharedSecret, StaticSecret};
 use failure::Fail;
-use strobe_rs::{AuthError, SecParam, Strobe, STROBE_VERSION};
-
-struct SymmetricState {
-    strobe_state: Strobe,
-    is_keyed: bool,
-}
-
-/// A ciphertext object with an associated MAC and nonce. To be used with things in the `disco`
-/// module.
-#[derive(Clone, Debug)]
-pub struct DiscoAuthCiphertext {
-    mac: Vec<u8>,
-    ct: Vec<u8>,
-}
-
-impl iter::IntoIterator for DiscoAuthCiphertext {
-    type Item = u8;
-    type IntoIter = iter::Chain<vec::IntoIter<u8>, vec::IntoIter<u8>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.mac.into_iter().chain(self.ct.into_iter())
-    }
-}
-
-impl SymmetricState {
-    pub fn new(proto: Vec<u8>) -> SymmetricState {
-        SymmetricState {
-            strobe_state: Strobe::new(&proto, SecParam::B128),
-            is_keyed: false,
-        }
-    }
-
-    pub fn mix_key(&mut self, shared_secret: &[u8]) {
-        self.mix_key_and_hash(shared_secret);
-        self.is_keyed = true;
-    }
-
-    pub fn mix_hash(&mut self, data: &[u8]) {
-        self.strobe_state.ad(&data, false);
-    }
-
-    pub fn mix_key_and_hash(&mut self, shared_secret: &[u8]) {
-        self.strobe_state.ad(&shared_secret[..], false);
-    }
-
-    pub fn get_handshake_hash(&mut self) -> Vec<u8> {
-        let mut buf = vec![0u8; KEY_SIZE];
-        self.strobe_state.prf(&mut buf, false);
-        buf
-    }
-
-    fn encrypt_and_hash(&mut self, mut plaintext: Vec<u8>) -> Vec<u8> {
-        if self.is_keyed {
-            self.strobe_state.send_enc(&mut plaintext, false);
-            let mut mac = vec![0u8; TAG_SIZE];
-            self.strobe_state.send_mac(&mut mac, false);
-            [mac, plaintext].concat()
-        } else {
-            plaintext
-        }
-    }
-
-    /// Attempts to decrypt the given bytes. This will return an `AuthError` if the symmetric state
-    /// is keyed and the MAC does not pass verification.
-    fn decrypt_and_hash(&mut self, mut bytes: Vec<u8>) -> Result<Vec<u8>, AuthError> {
-        if self.is_keyed {
-            if bytes.len() < TAG_SIZE {
-                return Err(AuthError);
-            }
-            let tmp = bytes.split_off(TAG_SIZE);
-            let mut mac = bytes;
-            let mut ct = tmp;
-
-            self.strobe_state.recv_enc(&mut ct, false);
-            match self.strobe_state.recv_mac(&mut mac, false) {
-                Ok(_) => Ok(ct),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(bytes)
-        }
-    }
-
-    fn split(self) -> (Strobe, Strobe) {
-        let mut s1 = self.strobe_state.clone();
-        s1.ad(b"initiator", false);
-        s1.ratchet(KEY_SIZE, false);
-
-        let mut s2 = self.strobe_state;
-        s2.ad(b"responder", false);
-        s2.ratchet(KEY_SIZE, false);
-
-        (s1, s2)
-    }
-}
+use std::collections::VecDeque;
+use strobe_rs::{Strobe, STROBE_VERSION};
 
 #[derive(Debug, Fail)]
 pub enum DiscoWriteError {
@@ -155,14 +60,11 @@ impl HandshakeState {
         remote_static: Option<PublicKey>,
         psk: Option<SharedSecret>,
     ) -> HandshakeState {
-        let proto = [
-            b"Noise_",
-            handshake_pat.name,
-            b"_25519_STROBEv",
-            STROBE_VERSION.as_bytes(),
-        ]
-        .concat();
-        let mut symm_state = SymmetricState::new(proto);
+        let proto = format!(
+            "Noise_{}_25519_STROBEv{}",
+            handshake_pat.name, STROBE_VERSION
+        );
+        let mut symm_state = SymmetricState::new(proto.as_bytes());
         symm_state.mix_hash(&prologue);
 
         let message_pats = VecDeque::from(handshake_pat.message_pats.to_vec());
@@ -255,7 +157,7 @@ impl HandshakeState {
             panic!("disco: Call to write_msg when it is not our turn to write");
         }
 
-        if payload.len() > NOISE_MAX_PLAINTEXT_SIZE {
+        if payload.len() > MAX_PLAINTEXT_SIZE {
             return Err(DiscoWriteError::TooLongErr);
         }
 
@@ -293,7 +195,7 @@ impl HandshakeState {
 
                 Token::S => {
                     let s = self.s_pub().as_bytes().to_vec();
-                    let ct = self.symm_state.encrypt_and_hash(s);
+                    let ct = self.symm_state.encrypt_and_hash(&s);
                     msg_buf.extend(ct);
                 }
 
@@ -337,7 +239,7 @@ impl HandshakeState {
             }
         }
 
-        let ct = self.symm_state.encrypt_and_hash(payload);
+        let ct = self.symm_state.encrypt_and_hash(&payload);
         msg_buf.extend(ct);
 
         // Next time it's our turn to read
@@ -357,7 +259,7 @@ impl HandshakeState {
             panic!("disco: Call to read_msg when it is not our turn to read");
         }
 
-        if msg.len() > NOISE_MAX_PLAINTEXT_SIZE {
+        if msg.len() > MAX_PLAINTEXT_SIZE {
             return Err(DiscoReadError::TooLongErr);
         }
 
@@ -391,7 +293,7 @@ impl HandshakeState {
                 }
 
                 Token::S => {
-                    let tag_size = if self.symm_state.is_keyed {
+                    let tag_size = if self.symm_state.is_keyed() {
                         TAG_SIZE
                     } else {
                         0
@@ -408,7 +310,7 @@ impl HandshakeState {
                     msg = tmp;
                     let pt = self
                         .symm_state
-                        .decrypt_and_hash(ct)
+                        .decrypt_and_hash(&ct)
                         .map_err(|_| DiscoReadError::AuthErr)?;
                     let mut s = [0u8; DH_SIZE];
                     s.copy_from_slice(&*pt);
@@ -457,7 +359,7 @@ impl HandshakeState {
 
         let pt = self
             .symm_state
-            .decrypt_and_hash(msg)
+            .decrypt_and_hash(&msg)
             .map_err(|_| DiscoReadError::AuthErr)?;
 
         // Next time it's our turn to read

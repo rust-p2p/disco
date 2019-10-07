@@ -2,7 +2,7 @@
 //! other peer static public key and if the peer needs to provide a proof for
 //!  its static public key.
 use crate::config::{Config, Role};
-use crate::disco::{DiscoReadError, DiscoWriteError, HandshakeState};
+use crate::handshake_state::{DiscoReadError, DiscoWriteError, HandshakeState};
 
 use failure::Fail;
 use strobe_rs::Strobe;

@@ -5,9 +5,10 @@
 
 mod apis;
 mod config;
-mod disco;
+mod handshake_state;
 pub mod patterns;
 pub mod symmetric;
+mod symmetric_state;
 
 pub use apis::Session;
 pub use config::{ConfigBuilder, PublicKeyVerifier, Role};
