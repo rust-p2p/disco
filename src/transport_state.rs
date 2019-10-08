@@ -1,12 +1,12 @@
 //! Transport phase of a Noise session.
 use crate::constants::{MAX_MSG_LEN, TAG_LEN};
-use crate::handshake_state::ReadError;
+use crate::handshake_state::{PanicOption, ReadError};
 use strobe_rs::Strobe;
 
 /// A state machine encompassing the transport phase of a Noise session.
 pub struct TransportState {
-    pub(crate) tx: Strobe,
-    pub(crate) rx: Strobe,
+    pub(crate) tx: PanicOption<Strobe>,
+    pub(crate) rx: PanicOption<Strobe>,
 }
 
 impl TransportState {

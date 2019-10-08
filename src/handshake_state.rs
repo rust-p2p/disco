@@ -1,10 +1,10 @@
 //! Implementation of the HandshakeState.
 use crate::constants::{DH_LEN, KEY_LEN, MAX_MSG_LEN, TAG_LEN};
-use crate::patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
+use crate::patterns::{Handshake, Role, Token};
 use crate::symmetric_state::SymmetricState;
 use crate::transport_state::TransportState;
 use crate::x25519::{PublicKey, SharedSecret, StaticSecret};
-use core::ops::Deref;
+use core::ops::{Deref, DerefMut};
 use failure::Fail;
 use std::collections::VecDeque;
 use strobe_rs::STROBE_VERSION;
@@ -24,15 +24,6 @@ impl From<strobe_rs::AuthError> for ReadError {
     fn from(_: strobe_rs::AuthError) -> Self {
         Self::AuthError
     }
-}
-
-/// Role in the handshake process.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Role {
-    /// Initiates the handshake.
-    Initiator,
-    /// Responds to the handshake.
-    Responder,
 }
 
 /// The state of the handshake process.
@@ -67,7 +58,7 @@ impl KeyPair {
     }
 }
 
-struct PanicOption<T>(Option<T>);
+pub struct PanicOption<T>(Option<T>);
 
 impl<T> PanicOption<T> {
     fn get(&self) -> Option<&T> {
@@ -80,6 +71,12 @@ impl<T> Deref for PanicOption<T> {
 
     fn deref(&self) -> &Self::Target {
         self.get().unwrap()
+    }
+}
+
+impl<T> DerefMut for PanicOption<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut().unwrap()
     }
 }
 
@@ -100,33 +97,34 @@ pub struct HandshakeState {
     role: Role,
     /// A sequence of message patterns. Each message pattern is a sequence of
     /// tokens from the set (e, s, ee, es, se, ss, psk).
-    message_patterns: VecDeque<MessagePattern>,
+    message_patterns: VecDeque<Vec<Token>>,
     /// Turn in the handshake process (Read or Write).
     turn: Turn,
     /// Pre-shared key.
-    psk: Option<[u8; KEY_LEN]>,
+    psks: Vec<[u8; KEY_LEN]>,
+    /// Is a oneway pattern.
+    oneway: bool,
 }
 
 impl HandshakeState {
     /// Initializes the HandshakeState.
     pub(crate) fn new(
-        handshake_pattern: HandshakePattern,
+        handshake: Handshake,
         role: Role,
         prologue: &[u8],
         s: Option<StaticSecret>,
         e: Option<StaticSecret>,
         rs: Option<PublicKey>,
         re: Option<PublicKey>,
-        psk: Option<[u8; KEY_LEN]>,
+        psks: Vec<[u8; KEY_LEN]>,
     ) -> HandshakeState {
-        let protocol_name = format!(
-            "Noise_{}_25519_STROBEv{}",
-            handshake_pattern.name, STROBE_VERSION
-        );
+        let protocol_name = format!("Noise_{}_25519_STROBEv{}", handshake.name(), STROBE_VERSION);
         let mut symmetric_state = SymmetricState::new(protocol_name.as_bytes());
         symmetric_state.mix_hash(prologue);
 
-        let message_patterns = VecDeque::from(handshake_pattern.message_patterns.to_vec());
+        let (initiator, responder, message_pattern) = handshake.tokens();
+        let message_patterns = VecDeque::from(message_pattern);
+        let oneway = handshake.pattern().is_oneway();
         let turn = match role {
             Role::Initiator => Turn::Write,
             Role::Responder => Turn::Read,
@@ -136,6 +134,7 @@ impl HandshakeState {
         let e = PanicOption(e.map(KeyPair::new));
         let rs = PanicOption(rs);
         let re = PanicOption(re);
+        let psks = psks.into_iter().rev().collect();
 
         let mut h = HandshakeState {
             symmetric_state,
@@ -146,10 +145,11 @@ impl HandshakeState {
             role,
             message_patterns,
             turn,
-            psk,
+            psks,
+            oneway,
         };
 
-        h.initialize(&handshake_pattern.pre_message_patterns);
+        h.initialize(initiator, responder);
         h
     }
 
@@ -158,9 +158,9 @@ impl HandshakeState {
     /// Section 7 for an explanation of pre-messages).
     /// If both initiator and responder have pre-messages, the initiator's
     /// public keys are hashed first.
-    fn initialize(&mut self, pre_message_patterns: &PreMessagePatternPair) {
+    fn initialize(&mut self, initiator: &[Token], responder: &[Token]) {
         // Initiator pre-message pattern
-        for token in pre_message_patterns.initiator {
+        for token in initiator {
             if let Token::S = token {
                 match self.role {
                     Role::Initiator => {
@@ -178,7 +178,7 @@ impl HandshakeState {
         }
 
         // Responder pre-message pattern
-        for token in pre_message_patterns.responder {
+        for token in responder {
             if let Token::S = token {
                 match self.role {
                     Role::Initiator => {
@@ -214,7 +214,7 @@ impl HandshakeState {
                     let e = KeyPair::generate();
                     message.extend_from_slice(e.public().as_bytes());
                     self.symmetric_state.mix_hash(e.public().as_bytes());
-                    if self.psk.is_some() {
+                    if self.psks.len() > 0 {
                         self.symmetric_state.mix_key(e.public().as_bytes());
                     }
                     self.e = PanicOption(Some(e));
@@ -253,8 +253,8 @@ impl HandshakeState {
                 }
 
                 Token::Psk => {
-                    let psk = self.psk.as_ref().unwrap();
-                    self.symmetric_state.mix_key_and_hash(psk);
+                    let psk = self.psks.pop().unwrap();
+                    self.symmetric_state.mix_key_and_hash(&psk[..]);
                 }
             }
         }
@@ -290,7 +290,7 @@ impl HandshakeState {
                     let mut e = [0u8; DH_LEN];
                     e.copy_from_slice(&message[i..i2]);
                     self.symmetric_state.mix_hash(&e);
-                    if self.psk.is_some() {
+                    if self.psks.len() > 0 {
                         self.symmetric_state.mix_key(&e);
                     }
                     self.re = PanicOption(Some(PublicKey::from(e)));
@@ -341,8 +341,8 @@ impl HandshakeState {
                 }
 
                 Token::Psk => {
-                    let psk = self.psk.as_ref().unwrap();
-                    self.symmetric_state.mix_key_and_hash(psk);
+                    let psk = self.psks.pop().unwrap();
+                    self.symmetric_state.mix_key_and_hash(&psk[..]);
                 }
             }
         }
@@ -396,6 +396,12 @@ impl HandshakeState {
     pub fn into_transport_mode(self) -> TransportState {
         assert!(self.is_handshake_finished());
         let (init, resp) = self.symmetric_state.split();
+        let init = PanicOption(Some(init));
+        let resp = if self.oneway {
+            PanicOption(None)
+        } else {
+            PanicOption(Some(resp))
+        };
         match self.role {
             Role::Initiator => TransportState { tx: init, rx: resp },
             Role::Responder => TransportState { tx: resp, rx: init },

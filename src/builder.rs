@@ -1,26 +1,27 @@
 use crate::constants::KEY_LEN;
-use crate::handshake_state::{HandshakeState, Role};
-use crate::patterns::HandshakePattern;
+use crate::handshake_state::HandshakeState;
+use crate::patterns::{Handshake, Role};
 use x25519_dalek::{PublicKey, StaticSecret};
 
 /// Session builder.
 pub struct SessionBuilder {
-    handshake_pattern: HandshakePattern,
+    handshake: Handshake,
     secret: Option<StaticSecret>,
     remote_public: Option<PublicKey>,
     prologue: Option<Vec<u8>>,
-    preshared_secret: Option<[u8; KEY_LEN]>,
+    psks: Vec<[u8; KEY_LEN]>,
 }
 
 impl SessionBuilder {
     /// Creates a new config builder for a given handshake pattern and role.
-    pub fn new(handshake_pattern: HandshakePattern) -> Self {
+    pub fn new(pattern: &str) -> Self {
+        let handshake = pattern.parse().unwrap();
         Self {
-            handshake_pattern,
+            handshake,
             secret: None,
             remote_public: None,
             prologue: None,
-            preshared_secret: None,
+            psks: vec![],
         }
     }
 
@@ -44,8 +45,8 @@ impl SessionBuilder {
     }
 
     /// A pre-shared key for handshake patterns including a `psk` token.
-    pub fn preshared_secret(mut self, secret: [u8; KEY_LEN]) -> Self {
-        self.preshared_secret = Some(secret);
+    pub fn add_psk(mut self, secret: [u8; KEY_LEN]) -> Self {
+        self.psks.push(secret);
         self
     }
 
@@ -61,38 +62,27 @@ impl SessionBuilder {
 
     /// Builds a session.
     fn build(mut self, role: Role) -> HandshakeState {
-        match self.handshake_pattern.name {
-            "K" | "KN" | "KK" | "KX" => match role {
-                Role::Initiator => assert!(self.remote_public.is_some()),
-                _ => {}
-            },
-            _ => {}
+        if self.handshake.pattern().needs_local_static_key(role) {
+            assert!(self.secret.is_some());
         }
 
-        match self.handshake_pattern.name {
-            "NK" | "KK" | "XK" | "IK" => match role {
-                Role::Initiator => {}
-                Role::Responder => assert!(self.remote_public.is_some()),
-            },
-            _ => {}
+        if self.handshake.pattern().needs_known_remote_pubkey(role) {
+            assert!(self.remote_public.is_some());
         }
 
-        match self.handshake_pattern.name {
-            "NNPsk2" => assert!(self.preshared_secret.is_some()),
-            _ => {}
-        }
+        assert!(self.handshake.number_of_psks() == self.psks.len());
 
         let prologue = self.prologue.take().unwrap_or_default();
 
         HandshakeState::new(
-            self.handshake_pattern,
+            self.handshake,
             role,
             &prologue,
             self.secret,
             None,
             self.remote_public,
             None,
-            self.preshared_secret,
+            self.psks,
         )
     }
 }

@@ -1,12 +1,11 @@
-use disco_rs::patterns::{NOISE_KK, NOISE_NN, NOISE_NNPSK2, NOISE_XX};
 use disco_rs::x25519::{PublicKey, StaticSecret};
 use disco_rs::SessionBuilder;
 use ed25519_dalek as ed25519;
 
 #[test]
 fn test_nn_session() {
-    let mut session1 = SessionBuilder::new(NOISE_NN).build_initiator();
-    let mut session2 = SessionBuilder::new(NOISE_NN).build_responder();
+    let mut session1 = SessionBuilder::new("NN").build_initiator();
+    let mut session2 = SessionBuilder::new("NN").build_responder();
 
     println!("-> e");
     let ct = session1.write_message(&[]);
@@ -33,12 +32,12 @@ fn test_kk_session() {
     let secret2 = StaticSecret::new(&mut rand::rngs::OsRng);
     let public2 = PublicKey::from(&secret2);
 
-    let mut session1 = SessionBuilder::new(NOISE_KK)
+    let mut session1 = SessionBuilder::new("KK")
         .secret(secret1)
         .remote_public(public2)
         .build_initiator();
 
-    let mut session2 = SessionBuilder::new(NOISE_KK)
+    let mut session2 = SessionBuilder::new("KK")
         .secret(secret2)
         .remote_public(public1)
         .build_responder();
@@ -95,13 +94,9 @@ fn test_xx_session() {
     let public2 = PublicKey::from(&secret2);
     let proof2 = root.sign(public2.as_bytes());
 
-    let mut session1 = SessionBuilder::new(NOISE_XX)
-        .secret(secret1)
-        .build_initiator();
+    let mut session1 = SessionBuilder::new("XX").secret(secret1).build_initiator();
 
-    let mut session2 = SessionBuilder::new(NOISE_XX)
-        .secret(secret2)
-        .build_responder();
+    let mut session2 = SessionBuilder::new("XX").secret(secret2).build_responder();
 
     println!("-> e");
     let ct = session1.write_message(&[]);
@@ -131,14 +126,14 @@ fn test_xx_session() {
 #[test]
 fn test_nnpsk2_session() {
     // Also test prologue and rekeying.
-    let mut session1 = SessionBuilder::new(NOISE_NNPSK2)
+    let mut session1 = SessionBuilder::new("NNpsk2")
         .prologue(b"prologue".to_vec())
-        .preshared_secret([0u8; 32])
+        .add_psk([0u8; 32])
         .build_initiator();
 
-    let mut session2 = SessionBuilder::new(NOISE_NNPSK2)
+    let mut session2 = SessionBuilder::new("NNpsk2")
         .prologue(b"prologue".to_vec())
-        .preshared_secret([0u8; 32])
+        .add_psk([0u8; 32])
         .build_responder();
 
     println!("->");

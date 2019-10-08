@@ -5,7 +5,7 @@
 mod builder;
 mod constants;
 mod handshake_state;
-pub mod patterns;
+mod patterns;
 pub mod symmetric;
 mod symmetric_state;
 mod transport_state;
