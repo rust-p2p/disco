@@ -11,5 +11,4 @@ mod symmetric_state;
 mod transport_state;
 
 pub use builder::SessionBuilder;
-pub use handshake_state::Role;
 pub use x25519_dalek as x25519;

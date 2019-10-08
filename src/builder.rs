@@ -6,7 +6,6 @@ use x25519_dalek::{PublicKey, StaticSecret};
 /// Session builder.
 pub struct SessionBuilder {
     handshake_pattern: HandshakePattern,
-    role: Role,
     secret: Option<StaticSecret>,
     remote_public: Option<PublicKey>,
     prologue: Option<Vec<u8>>,
@@ -15,10 +14,9 @@ pub struct SessionBuilder {
 
 impl SessionBuilder {
     /// Creates a new config builder for a given handshake pattern and role.
-    pub fn new(handshake_pattern: HandshakePattern, role: Role) -> Self {
+    pub fn new(handshake_pattern: HandshakePattern) -> Self {
         Self {
             handshake_pattern,
-            role,
             secret: None,
             remote_public: None,
             prologue: None,
@@ -51,10 +49,20 @@ impl SessionBuilder {
         self
     }
 
-    /// Build a disco config.
-    pub fn build(mut self) -> HandshakeState {
+    /// Build an initiator session.
+    pub fn build_initiator(self) -> HandshakeState {
+        self.build(Role::Initiator)
+    }
+
+    /// Build a responder session.
+    pub fn build_responder(self) -> HandshakeState {
+        self.build(Role::Responder)
+    }
+
+    /// Builds a session.
+    fn build(mut self, role: Role) -> HandshakeState {
         match self.handshake_pattern.name {
-            "K" | "KN" | "KK" | "KX" => match self.role {
+            "K" | "KN" | "KK" | "KX" => match role {
                 Role::Initiator => assert!(self.remote_public.is_some()),
                 _ => {}
             },
@@ -62,7 +70,7 @@ impl SessionBuilder {
         }
 
         match self.handshake_pattern.name {
-            "NK" | "KK" | "XK" | "IK" => match self.role {
+            "NK" | "KK" | "XK" | "IK" => match role {
                 Role::Initiator => {}
                 Role::Responder => assert!(self.remote_public.is_some()),
             },
@@ -78,7 +86,7 @@ impl SessionBuilder {
 
         HandshakeState::new(
             self.handshake_pattern,
-            self.role,
+            role,
             &prologue,
             self.secret,
             None,

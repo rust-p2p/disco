@@ -1,6 +1,6 @@
 use disco_rs::patterns::{NOISE_KK, NOISE_NNPSK2, NOISE_XX};
 use disco_rs::x25519::{PublicKey, StaticSecret};
-use disco_rs::{Role, SessionBuilder};
+use disco_rs::SessionBuilder;
 use ed25519_dalek as ed25519;
 
 #[test]
@@ -11,15 +11,15 @@ fn test_kk_session() {
     let secret2 = StaticSecret::new(&mut rand::rngs::OsRng);
     let public2 = PublicKey::from(&secret2);
 
-    let mut session1 = SessionBuilder::new(NOISE_KK, Role::Initiator)
+    let mut session1 = SessionBuilder::new(NOISE_KK)
         .secret(secret1)
         .remote_public(public2)
-        .build();
+        .build_initiator();
 
-    let mut session2 = SessionBuilder::new(NOISE_KK, Role::Responder)
+    let mut session2 = SessionBuilder::new(NOISE_KK)
         .secret(secret2)
         .remote_public(public1)
-        .build();
+        .build_responder();
 
     println!("->");
     let ct = session1.write_message(b"e es ss");
@@ -73,13 +73,13 @@ fn test_xx_session() {
     let public2 = PublicKey::from(&secret2);
     let proof2 = root.sign(public2.as_bytes());
 
-    let mut session1 = SessionBuilder::new(NOISE_XX, Role::Initiator)
+    let mut session1 = SessionBuilder::new(NOISE_XX)
         .secret(secret1)
-        .build();
+        .build_initiator();
 
-    let mut session2 = SessionBuilder::new(NOISE_XX, Role::Responder)
+    let mut session2 = SessionBuilder::new(NOISE_XX)
         .secret(secret2)
-        .build();
+        .build_responder();
 
     println!("-> e");
     let ct = session1.write_message(&[]);
@@ -109,15 +109,15 @@ fn test_xx_session() {
 #[test]
 fn test_nnpsk2_session() {
     // Also test prologue and rekeying.
-    let mut session1 = SessionBuilder::new(NOISE_NNPSK2, Role::Initiator)
+    let mut session1 = SessionBuilder::new(NOISE_NNPSK2)
         .prologue(b"prologue".to_vec())
         .preshared_secret([0u8; 32])
-        .build();
+        .build_initiator();
 
-    let mut session2 = SessionBuilder::new(NOISE_NNPSK2, Role::Responder)
+    let mut session2 = SessionBuilder::new(NOISE_NNPSK2)
         .prologue(b"prologue".to_vec())
         .preshared_secret([0u8; 32])
-        .build();
+        .build_responder();
 
     println!("->");
     let ct = session1.write_message(b"e");
