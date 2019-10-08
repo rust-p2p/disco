@@ -1,10 +1,8 @@
 //! Symmetric crypto primitives built with strobe.
+use crate::constants::{NONCE_LEN, TAG_LEN};
 use rand::{thread_rng, RngCore};
 pub use strobe_rs::AuthError;
 use strobe_rs::{SecParam, Strobe};
-
-const NONCE_SIZE: usize = 192 / 8;
-const TAG_SIZE: usize = 16;
 
 /// Represents plaintext with an associated MAC.
 #[derive(Clone, Debug)]
@@ -28,11 +26,11 @@ impl AuthPlaintext {
     /// Builds an `AuthPlaintext` struct from raw bytes. Returns `None` when the input is
     /// too short.
     pub fn from_bytes(mut bytes: Vec<u8>) -> Option<AuthPlaintext> {
-        if bytes.len() < TAG_SIZE {
+        if bytes.len() < TAG_LEN {
             None
         } else {
             // Interpret the input as mac || pt
-            let pt = bytes.split_off(TAG_SIZE);
+            let pt = bytes.split_off(TAG_LEN);
             let mac = bytes;
             Some(AuthPlaintext { mac, pt })
         }
@@ -63,13 +61,13 @@ impl AuthCiphertext {
     /// Builds an `AuthCiphertext` struct from raw bytes. Returns `None` when the input is
     /// too short.
     pub fn from_bytes(mut bytes: Vec<u8>) -> Option<AuthCiphertext> {
-        if bytes.len() < TAG_SIZE + NONCE_SIZE {
+        if bytes.len() < TAG_LEN + NONCE_LEN {
             None
         } else {
             // Interpret the input as mac || nonce || ct
-            let mut rest = bytes.split_off(TAG_SIZE);
+            let mut rest = bytes.split_off(TAG_LEN);
             let mac = bytes;
-            let rest2 = rest.split_off(NONCE_SIZE);
+            let rest2 = rest.split_off(NONCE_LEN);
             let nonce = rest;
             let ct = rest2;
             Some(AuthCiphertext { mac, nonce, ct })
@@ -167,7 +165,7 @@ pub fn protect_integrity(key: &[u8], plaintext: Vec<u8>) -> AuthPlaintext {
     let mut s = Strobe::new(b"DiscoMAC", SecParam::B128);
     s.ad(key, false);
     s.ad(&plaintext, false);
-    let mut mac = vec![0u8; TAG_SIZE];
+    let mut mac = vec![0u8; TAG_LEN];
     s.send_mac(&mut mac, false);
 
     AuthPlaintext {
@@ -205,12 +203,12 @@ pub fn encrypt(key: &[u8], mut plaintext: Vec<u8>) -> AuthCiphertext {
 
     // Generate 192-bit nonce and absorb it
     let mut rng = thread_rng();
-    let mut nonce = vec![0u8; NONCE_SIZE];
+    let mut nonce = vec![0u8; NONCE_LEN];
     rng.fill_bytes(nonce.as_mut_slice());
     s.ad(&mut nonce, false);
 
     s.send_enc(&mut plaintext, false);
-    let mut mac = vec![0u8; TAG_SIZE];
+    let mut mac = vec![0u8; TAG_LEN];
     s.send_mac(&mut mac, false);
 
     AuthCiphertext {

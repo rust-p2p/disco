@@ -1,5 +1,5 @@
 //! Implementation of the HandshakeState.
-use crate::config::{DH_SIZE, KEY_SIZE, MAX_MESSAGE_SIZE, TAG_SIZE};
+use crate::constants::{DH_LEN, KEY_LEN, MAX_MSG_LEN, TAG_LEN};
 use crate::patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
 use crate::symmetric_state::SymmetricState;
 use crate::x25519::{PublicKey, SharedSecret, StaticSecret};
@@ -97,7 +97,7 @@ pub struct HandshakeState {
     /// Turn in the handshake process (Read or Write).
     turn: Turn,
     /// Pre-shared key.
-    psk: Option<[u8; KEY_SIZE]>,
+    psk: Option<[u8; KEY_LEN]>,
 }
 
 impl HandshakeState {
@@ -110,7 +110,7 @@ impl HandshakeState {
         e: Option<StaticSecret>,
         rs: Option<PublicKey>,
         re: Option<PublicKey>,
-        psk: Option<[u8; KEY_SIZE]>,
+        psk: Option<[u8; KEY_LEN]>,
     ) -> HandshakeState {
         let protocol_name = format!(
             "Noise_{}_25519_STROBEv{}",
@@ -198,13 +198,13 @@ impl HandshakeState {
     /// message buffer.
     pub fn write_message(&mut self, payload: &[u8]) -> Vec<u8> {
         assert!(self.turn == Turn::Write);
-        assert!(payload.len() <= MAX_MESSAGE_SIZE - TAG_SIZE * 2 - DH_SIZE * 2);
+        assert!(payload.len() <= MAX_MSG_LEN - TAG_LEN * 2 - DH_LEN * 2);
 
         let pattern = self
             .message_patterns
             .pop_front()
             .expect("No more patterns left to process");
-        let mut message = Vec::with_capacity(MAX_MESSAGE_SIZE);
+        let mut message = Vec::with_capacity(MAX_MSG_LEN);
 
         for token in pattern {
             match token {
@@ -270,7 +270,7 @@ impl HandshakeState {
     /// the decrypted payload.
     pub fn read_message(&mut self, message: &[u8]) -> Result<Vec<u8>, ReadError> {
         assert!(self.turn == Turn::Read);
-        assert!(message.len() <= MAX_MESSAGE_SIZE);
+        assert!(message.len() <= MAX_MSG_LEN);
 
         let pattern = self
             .message_patterns
@@ -281,11 +281,11 @@ impl HandshakeState {
         for token in pattern {
             match token {
                 Token::E => {
-                    let i2 = i + DH_SIZE;
+                    let i2 = i + DH_LEN;
                     if i2 >= message.len() {
                         return Err(ReadError::InvalidMessage);
                     }
-                    let mut e = [0u8; DH_SIZE];
+                    let mut e = [0u8; DH_LEN];
                     e.copy_from_slice(&message[i..i2]);
                     self.symmetric_state.mix_hash(&e);
                     if self.psk.is_some() {
@@ -296,17 +296,17 @@ impl HandshakeState {
                 }
 
                 Token::S => {
-                    let tag_size = if self.symmetric_state.is_keyed() {
-                        TAG_SIZE
+                    let tag_size = if self.symmetric_state.has_key() {
+                        TAG_LEN
                     } else {
                         0
                     };
-                    let i2 = i + DH_SIZE + tag_size;
+                    let i2 = i + DH_LEN + tag_size;
                     if i2 >= message.len() {
                         return Err(ReadError::InvalidMessage);
                     }
                     let pt = self.symmetric_state.decrypt_and_hash(&message[i..i2])?;
-                    let mut rs = [0u8; DH_SIZE];
+                    let mut rs = [0u8; DH_LEN];
                     rs.copy_from_slice(&pt);
                     self.rs = PanicOption(Some(PublicKey::from(rs)));
                     i = i2;

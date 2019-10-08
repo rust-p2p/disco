@@ -1,5 +1,5 @@
 //! Implementation of the SymmetricState.
-use crate::config::{KEY_SIZE, TAG_SIZE};
+use crate::constants::{KEY_LEN, TAG_LEN};
 use strobe_rs::{AuthError, SecParam, Strobe};
 
 /// 5.2. The SymmetricState object.
@@ -7,7 +7,7 @@ pub struct SymmetricState {
     /// Strobe state.
     strobe: Strobe,
     /// Is true after a key has been mixed into the state.
-    is_keyed: bool,
+    has_key: bool,
 }
 
 impl SymmetricState {
@@ -17,21 +17,21 @@ impl SymmetricState {
         let strobe = Strobe::new(protocol_name, SecParam::B128);
         SymmetricState {
             strobe,
-            is_keyed: false,
+            has_key: false,
         }
     }
 
     /// Is keyed returns true after a key has been mixed into the symmetric
     /// state.
-    pub fn is_keyed(&self) -> bool {
-        self.is_keyed
+    pub fn has_key(&self) -> bool {
+        self.has_key
     }
 
     /// Mixes a key into the symmetric state.
     pub fn mix_key(&mut self, key: &[u8]) {
-        assert!(key.len() == KEY_SIZE);
+        assert!(key.len() == KEY_LEN);
         self.strobe.ad(key, false);
-        self.is_keyed = true;
+        self.has_key = true;
     }
 
     /// Mixes arbitrary bytes into the symmetric state.
@@ -46,11 +46,11 @@ impl SymmetricState {
 
     /// Returns the authenticated ciphertext for a plaintext message.
     pub fn encrypt_and_hash(&mut self, pt: &[u8]) -> Vec<u8> {
-        if self.is_keyed {
-            let mut ct = Vec::with_capacity(pt.len() + TAG_SIZE);
+        if self.has_key {
+            let mut ct = Vec::with_capacity(pt.len() + TAG_LEN);
             ct.extend_from_slice(pt);
             self.strobe.send_enc(&mut ct[..pt.len()], false);
-            ct.extend_from_slice(&[0u8; TAG_SIZE]);
+            ct.extend_from_slice(&[0u8; TAG_LEN]);
             self.strobe.send_mac(&mut ct[pt.len()..], false);
             ct
         } else {
@@ -60,11 +60,11 @@ impl SymmetricState {
 
     /// Returns the plaintext of an authenticated ciphertext message.
     pub fn decrypt_and_hash(&mut self, ct: &[u8]) -> Result<Vec<u8>, AuthError> {
-        if self.is_keyed {
-            if ct.len() < TAG_SIZE {
+        if self.has_key {
+            if ct.len() < TAG_LEN {
                 return Err(AuthError);
             }
-            let pt_len = ct.len() - TAG_SIZE;
+            let pt_len = ct.len() - TAG_LEN;
             let mut pt = Vec::with_capacity(pt_len);
             pt.extend_from_slice(&ct[..pt_len]);
             self.strobe.recv_enc(&mut pt, false);
@@ -85,11 +85,11 @@ impl SymmetricState {
     pub fn split(self) -> (Strobe, Strobe) {
         let mut s1 = self.strobe.clone();
         s1.ad(b"initiator", false);
-        s1.ratchet(KEY_SIZE, false);
+        s1.ratchet(KEY_LEN, false);
 
         let mut s2 = self.strobe;
         s2.ad(b"responder", false);
-        s2.ratchet(KEY_SIZE, false);
+        s2.ratchet(KEY_LEN, false);
 
         (s1, s2)
     }
@@ -110,7 +110,7 @@ impl SymmetricState {
     /// property: the token can't be used by the receiving party with a
     /// different session.
     pub fn get_handshake_hash(&mut self) -> Vec<u8> {
-        let mut buf = vec![0u8; KEY_SIZE];
+        let mut buf = vec![0u8; KEY_LEN];
         self.strobe.prf(&mut buf, false);
         buf
     }
