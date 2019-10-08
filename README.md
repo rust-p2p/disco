@@ -8,8 +8,6 @@ disco-rs
 This is a Rust implementation of the [Disco](https://www.discocrypto.com) cryptographic protocol
 framework.
 
-This is a work in progress.
-
 License
 -------
 
