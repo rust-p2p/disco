@@ -1,6 +1,7 @@
 use disco_rs::patterns::{NOISE_KK, NOISE_NNPSK2, NOISE_XX};
 use disco_rs::x25519::{PublicKey, StaticSecret};
-use disco_rs::{ConfigBuilder, PublicKeyVerifier, Role, Session};
+use disco_rs::{Role, SessionBuilder};
+use ed25519_dalek as ed25519;
 
 #[test]
 fn test_kk_session() {
@@ -10,18 +11,15 @@ fn test_kk_session() {
     let secret2 = StaticSecret::new(&mut rand::rngs::OsRng);
     let public2 = PublicKey::from(&secret2);
 
-    let config1 = ConfigBuilder::new(NOISE_KK, Role::Initiator)
+    let mut session1 = SessionBuilder::new(NOISE_KK, Role::Initiator)
         .secret(secret1)
         .remote_public(public2)
         .build();
 
-    let config2 = ConfigBuilder::new(NOISE_KK, Role::Responder)
+    let mut session2 = SessionBuilder::new(NOISE_KK, Role::Responder)
         .secret(secret2)
         .remote_public(public1)
         .build();
-
-    let mut session1 = Session::new(config1);
-    let mut session2 = Session::new(config2);
 
     println!("->");
     let ct = session1.write_message(b"e es ss");
@@ -33,57 +31,74 @@ fn test_kk_session() {
     let pt = session1.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"e ee se");
 
+    let mut session1 = session1.into_transport_mode();
+    let mut session2 = session2.into_transport_mode();
+
     println!("->");
     let ct = session1.write_message(b"hello");
     let pt = session2.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"hello");
 }
 
-struct Verifier;
+#[derive(Clone, Debug)]
+struct Verifier {
+    root_public: ed25519::PublicKey,
+}
 
-impl PublicKeyVerifier for Verifier {
-    fn verify(&self, _public: &PublicKey, _proof: &[u8]) -> bool {
-        true
+impl Verifier {
+    pub fn new(root_public: ed25519::PublicKey) -> Self {
+        Self { root_public }
+    }
+
+    pub fn verify(&self, public: &PublicKey, proof: &[u8]) -> bool {
+        if let Ok(sig) = ed25519::Signature::from_bytes(proof) {
+            if let Ok(()) = self.root_public.verify(public.as_bytes(), &sig) {
+                return true;
+            }
+        }
+        false
     }
 }
 
 #[test]
 fn test_xx_session() {
+    let root = ed25519::Keypair::generate(&mut rand::rngs::OsRng);
+    let verifier = Verifier::new(root.public.clone());
+
     let secret1 = StaticSecret::new(&mut rand::rngs::OsRng);
-    //let public1 = PublicKey::from(&secret1);
+    let public1 = PublicKey::from(&secret1);
+    let proof1 = root.sign(public1.as_bytes());
 
     let secret2 = StaticSecret::new(&mut rand::rngs::OsRng);
-    //let public2 = PublicKey::from(&secret2);
+    let public2 = PublicKey::from(&secret2);
+    let proof2 = root.sign(public2.as_bytes());
 
-    let config1 = ConfigBuilder::new(NOISE_XX, Role::Initiator)
+    let mut session1 = SessionBuilder::new(NOISE_XX, Role::Initiator)
         .secret(secret1)
-        .public_key_verifier(Verifier)
-        .public_key_proof(vec![])
         .build();
 
-    let config2 = ConfigBuilder::new(NOISE_XX, Role::Responder)
+    let mut session2 = SessionBuilder::new(NOISE_XX, Role::Responder)
         .secret(secret2)
-        .public_key_verifier(Verifier)
-        .public_key_proof(vec![])
         .build();
 
-    let mut session1 = Session::new(config1);
-    let mut session2 = Session::new(config2);
+    println!("-> e");
+    let ct = session1.write_message(&[]);
+    session2.read_message(&ct).expect("pt");
 
-    println!("->");
-    let ct = session1.write_message(b"e");
-    let pt = session2.read_message(&ct).expect("pt");
-    assert_eq!(&pt, b"e");
+    println!("<- e ee s es");
+    let ct = session2.write_message(&proof2.to_bytes()[..]);
+    let proof2 = session1.read_message(&ct).expect("pt");
+    let public2 = session1.get_remote_static().expect("s");
+    assert!(verifier.verify(public2, &proof2));
 
-    println!("<-");
-    let ct = session2.write_message(b"e ee s es");
-    let pt = session1.read_message(&ct).expect("pt");
-    assert_eq!(&pt, b"e ee s es");
+    println!("-> s se");
+    let ct = session1.write_message(&proof1.to_bytes()[..]);
+    let proof1 = session2.read_message(&ct).expect("pt");
+    let public1 = session2.get_remote_static().expect("s");
+    assert!(verifier.verify(public1, &proof1));
 
-    println!("->");
-    let ct = session1.write_message(b"s se");
-    let pt = session2.read_message(&ct).expect("pt");
-    assert_eq!(&pt, b"s se");
+    let mut session1 = session1.into_transport_mode();
+    let mut session2 = session2.into_transport_mode();
 
     println!("<-");
     let ct = session2.write_message(b"hello");
@@ -94,18 +109,15 @@ fn test_xx_session() {
 #[test]
 fn test_nnpsk2_session() {
     // Also test prologue and rekeying.
-    let config1 = ConfigBuilder::new(NOISE_NNPSK2, Role::Initiator)
+    let mut session1 = SessionBuilder::new(NOISE_NNPSK2, Role::Initiator)
         .prologue(b"prologue".to_vec())
         .preshared_secret([0u8; 32])
         .build();
 
-    let config2 = ConfigBuilder::new(NOISE_NNPSK2, Role::Responder)
+    let mut session2 = SessionBuilder::new(NOISE_NNPSK2, Role::Responder)
         .prologue(b"prologue".to_vec())
         .preshared_secret([0u8; 32])
         .build();
-
-    let mut session1 = Session::new(config1);
-    let mut session2 = Session::new(config2);
 
     println!("->");
     let ct = session1.write_message(b"e");
@@ -117,11 +129,14 @@ fn test_nnpsk2_session() {
     let pt = session1.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"e ee psk");
 
-    session1.rekey_rx();
-    session2.rekey_tx();
+    let mut session1 = session1.into_transport_mode();
+    let mut session2 = session2.into_transport_mode();
+
+    session1.rekey_outgoing();
+    session2.rekey_incoming();
 
     println!("->");
-    let ct = session2.write_message(b"hello");
-    let pt = session1.read_message(&ct).expect("pt");
+    let ct = session1.write_message(b"hello");
+    let pt = session2.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"hello");
 }

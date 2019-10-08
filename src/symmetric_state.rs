@@ -78,10 +78,6 @@ impl SymmetricState {
 
     /// Returns a pair of CipherState objects for encrypting transport
     /// messages.
-    ///
-    /// TODO: 11.3. Rekey
-    /// TODO: 11.4. Out-of-order transport messages
-    /// TODO: 11.5. Half-duplex protocols
     pub fn split(self) -> (Strobe, Strobe) {
         let mut s1 = self.strobe.clone();
         s1.ad(b"initiator", false);
@@ -94,21 +90,7 @@ impl SymmetricState {
         (s1, s2)
     }
 
-    /// 11.2. Channel binding
-    ///
-    /// Parties may wish to execute a Noise protocol, then perform
-    /// authentication at the application layer using signatures, passwords, or
-    /// something else.
-    ///
-    /// To support this, Noise libraries may call `get_handshake_hash` after
-    /// the handshake is complete and expose the returned value to the
-    /// application as a handshake hash which uniquely identifies the Noise
-    /// session.
-    ///
-    /// Parties can then sign the handshake hash, or hash it along with their
-    /// password, to get an authentication token which has a "channel binding"
-    /// property: the token can't be used by the receiving party with a
-    /// different session.
+    /// Returns the handshake hash.
     pub fn get_handshake_hash(&mut self) -> Vec<u8> {
         let mut buf = vec![0u8; KEY_LEN];
         self.strobe.prf(&mut buf, false);

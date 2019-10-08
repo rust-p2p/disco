@@ -2,11 +2,12 @@
 use crate::constants::{DH_LEN, KEY_LEN, MAX_MSG_LEN, TAG_LEN};
 use crate::patterns::{HandshakePattern, MessagePattern, PreMessagePatternPair, Token};
 use crate::symmetric_state::SymmetricState;
+use crate::transport_state::TransportState;
 use crate::x25519::{PublicKey, SharedSecret, StaticSecret};
 use core::ops::Deref;
 use failure::Fail;
 use std::collections::VecDeque;
-use strobe_rs::{Strobe, STROBE_VERSION};
+use strobe_rs::STROBE_VERSION;
 
 /// Read error returned by `read_message`.
 #[derive(Debug, Fail)]
@@ -68,11 +69,17 @@ impl KeyPair {
 
 struct PanicOption<T>(Option<T>);
 
+impl<T> PanicOption<T> {
+    fn get(&self) -> Option<&T> {
+        self.0.as_ref()
+    }
+}
+
 impl<T> Deref for PanicOption<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.0.as_ref().unwrap()
+        self.get().unwrap()
     }
 }
 
@@ -102,7 +109,7 @@ pub struct HandshakeState {
 
 impl HandshakeState {
     /// Initializes the HandshakeState.
-    pub fn new(
+    pub(crate) fn new(
         handshake_pattern: HandshakePattern,
         role: Role,
         prologue: &[u8],
@@ -187,11 +194,6 @@ impl HandshakeState {
                 panic!("disco: Pre-message token not supported: {:?}", token)
             }
         }
-    }
-
-    /// Returns if the handshake is complete.
-    pub fn is_handshake_complete(&self) -> bool {
-        self.message_patterns.len() == 0
     }
 
     /// Takes a payload byte sequence with may be zero-length, and returns a
@@ -282,7 +284,7 @@ impl HandshakeState {
             match token {
                 Token::E => {
                     let i2 = i + DH_LEN;
-                    if i2 >= message.len() {
+                    if i2 > message.len() {
                         return Err(ReadError::InvalidMessage);
                     }
                     let mut e = [0u8; DH_LEN];
@@ -302,7 +304,7 @@ impl HandshakeState {
                         0
                     };
                     let i2 = i + DH_LEN + tag_size;
-                    if i2 >= message.len() {
+                    if i2 > message.len() {
                         return Err(ReadError::InvalidMessage);
                     }
                     let pt = self.symmetric_state.decrypt_and_hash(&message[i..i2])?;
@@ -353,9 +355,50 @@ impl HandshakeState {
         Ok(pt)
     }
 
+    /// Get the remote party's static public key, if available.
+    ///
+    /// Note: will return `None` if either the cosen Noise pattern
+    /// doesn't necessitate a remote static key, *or* if the remote
+    /// static key is not yet known.
+    pub fn get_remote_static(&self) -> Option<&PublicKey> {
+        self.rs.get()
+    }
+
+    /// Get the handshake hash.
+    ///
+    /// Returns the state of the session useful for channel binding.
+    ///
+    /// 11.2. Channel binding
+    ///
+    /// Parties may wish to execute a Noise protocol, then perform
+    /// authentication at the application layer using signatures, passwords, or
+    /// something else.
+    ///
+    /// To support this, Noise libraries may call `get_handshake_hash` after
+    /// the handshake is complete and expose the returned value to the
+    /// application as a handshake hash which uniquely identifies the Noise
+    /// session.
+    ///
+    /// Parties can then sign the handshake hash, or hash it along with their
+    /// password, to get an authentication token which has a "channel binding"
+    /// property: the token can't be used by the receiving party with a
+    /// different session.
+    pub fn get_handshake_hash(&mut self) -> Vec<u8> {
+        self.symmetric_state.get_handshake_hash()
+    }
+
+    /// Checks if the handshake is finished.
+    pub fn is_handshake_finished(&self) -> bool {
+        self.message_patterns.len() == 0
+    }
+
     /// Returns a pair of Strobe objects for encrypting transport messages.
-    pub fn finalize(self) -> (Strobe, Strobe) {
-        assert!(self.is_handshake_complete());
-        self.symmetric_state.split()
+    pub fn into_transport_mode(self) -> TransportState {
+        assert!(self.is_handshake_finished());
+        let (init, resp) = self.symmetric_state.split();
+        match self.role {
+            Role::Initiator => TransportState { tx: init, rx: resp },
+            Role::Responder => TransportState { tx: resp, rx: init },
+        }
     }
 }

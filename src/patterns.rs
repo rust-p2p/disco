@@ -121,8 +121,5 @@ pub const NOISE_NNPSK2: HandshakePattern = HandshakePattern {
         initiator: &[],
         responder: &[],
     },
-    message_patterns: &[
-        &[Token::E],
-        &[Token::E, Token::EE, Token::Psk],
-    ],
+    message_patterns: &[&[Token::E], &[Token::E, Token::EE, Token::Psk]],
 };
