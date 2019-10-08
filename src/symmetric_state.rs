@@ -81,11 +81,11 @@ impl SymmetricState {
     pub fn split(self) -> (Strobe, Strobe) {
         let mut s1 = self.strobe.clone();
         s1.ad(b"initiator", false);
-        s1.ratchet(KEY_LEN, false);
+        s1.ratchet(16, false);
 
         let mut s2 = self.strobe;
         s2.ad(b"responder", false);
-        s2.ratchet(KEY_LEN, false);
+        s2.ratchet(16, false);
 
         (s1, s2)
     }

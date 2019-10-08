@@ -1,13 +1,14 @@
 //! Implementation of the HandshakeState.
 use crate::constants::{DH_LEN, KEY_LEN, MAX_MSG_LEN, TAG_LEN};
 use crate::patterns::{Handshake, Role, Token};
+use crate::stateless_transport_state::StatelessTransportState;
 use crate::symmetric_state::SymmetricState;
 use crate::transport_state::TransportState;
 use crate::x25519::{PublicKey, SharedSecret, StaticSecret};
 use core::ops::{Deref, DerefMut};
 use failure::Fail;
 use std::collections::VecDeque;
-use strobe_rs::STROBE_VERSION;
+use strobe_rs::{Strobe, STROBE_VERSION};
 
 /// Read error returned by `read_message`.
 #[derive(Debug, Fail)]
@@ -392,10 +393,13 @@ impl HandshakeState {
         self.message_patterns.len() == 0
     }
 
-    /// Returns a pair of Strobe objects for encrypting transport messages.
-    pub fn into_transport_mode(self) -> TransportState {
+    fn split(self, ratchet: bool) -> (PanicOption<Strobe>, PanicOption<Strobe>) {
         assert!(self.is_handshake_finished());
-        let (init, resp) = self.symmetric_state.split();
+        let (mut init, mut resp) = self.symmetric_state.split();
+        if ratchet {
+            init.meta_ratchet(0, false);
+            resp.meta_ratchet(0, false);
+        }
         let init = PanicOption(Some(init));
         let resp = if self.oneway {
             PanicOption(None)
@@ -403,8 +407,21 @@ impl HandshakeState {
             PanicOption(Some(resp))
         };
         match self.role {
-            Role::Initiator => TransportState { tx: init, rx: resp },
-            Role::Responder => TransportState { tx: resp, rx: init },
+            Role::Initiator => (init, resp),
+            Role::Responder => (resp, init),
         }
+    }
+
+    /// Returns a transport state object for encrypting transport messages.
+    pub fn into_transport_mode(self) -> TransportState {
+        let (tx, rx) = self.split(false);
+        TransportState { tx, rx }
+    }
+
+    /// Returns a stateless transport state object for encrypting transport
+    /// messages.
+    pub fn into_stateless_transport_mode(self) -> StatelessTransportState {
+        let (tx, rx) = self.split(true);
+        StatelessTransportState { tx, rx }
     }
 }

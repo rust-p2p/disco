@@ -15,13 +15,16 @@ fn test_nn_session() {
     let ct = session2.write_message(&[]);
     session1.read_message(&ct).unwrap();
 
-    let mut session1 = session1.into_transport_mode();
-    let mut session2 = session2.into_transport_mode();
+    let session1 = session1.into_stateless_transport_mode();
+    let session2 = session2.into_stateless_transport_mode();
 
     println!("->");
-    let ct = session1.write_message(b"hello");
-    let pt = session2.read_message(&ct).unwrap();
-    assert_eq!(&pt, b"hello");
+    let ct1 = session1.write_message(1, b"msg1");
+    let ct2 = session1.write_message(2, b"msg2");
+    let pt2 = session2.read_message(2, &ct2).unwrap();
+    let pt1 = session2.read_message(1, &ct1).unwrap();
+    assert_eq!(&pt1, b"msg1");
+    assert_eq!(&pt2, b"msg2");
 }
 
 #[test]

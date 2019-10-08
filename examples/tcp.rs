@@ -28,8 +28,8 @@ impl From<std::str::Utf8Error> for Error {
 }
 
 fn send(stream: &mut TcpStream, buf: &[u8]) -> Result<(), Error> {
-    let msg_len_buf = [(buf.len() >> 8) as u8, (buf.len() & 0xff) as u8];
-    stream.write_all(&msg_len_buf)?;
+    let msg_len = buf.len() as u16;
+    stream.write_all(&msg_len.to_be_bytes()[..])?;
     stream.write_all(buf)?;
     Ok(())
 }
@@ -37,8 +37,8 @@ fn send(stream: &mut TcpStream, buf: &[u8]) -> Result<(), Error> {
 fn recv(stream: &mut TcpStream) -> Result<Vec<u8>, Error> {
     let mut msg_len_buf = [0u8; 2];
     stream.read_exact(&mut msg_len_buf)?;
-    let msg_len = ((msg_len_buf[0] as usize) << 8) + (msg_len_buf[1] as usize);
-    let mut msg = vec![0u8; msg_len];
+    let msg_len = u16::from_be_bytes(msg_len_buf);
+    let mut msg = vec![0u8; msg_len as usize];
     stream.read_exact(&mut msg[..])?;
     Ok(msg)
 }
