@@ -248,6 +248,21 @@ impl Handshake {
             .count()
     }
 
+    /// Whether the pattern has a fallback modifier.
+    #[allow(unused)]
+    pub fn is_fallback(&self) -> bool {
+        self.modifiers
+            .0
+            .iter()
+            .find(|modifier| {
+                if let HandshakeModifier::Fallback = modifier {
+                    return true;
+                }
+                false
+            })
+            .is_some()
+    }
+
     /// Returns the tokens of a handshake pattern.
     pub fn tokens(&self) -> (&'static [Token], &'static [Token], Vec<Vec<Token>>) {
         let base = self.pattern.tokens();
