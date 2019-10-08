@@ -11,4 +11,6 @@ mod symmetric_state;
 mod transport_state;
 
 pub use builder::SessionBuilder;
+pub use constants::MAX_MSG_LEN;
+pub use handshake_state::ReadError;
 pub use x25519_dalek as x25519;

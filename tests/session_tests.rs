@@ -1,7 +1,29 @@
-use disco_rs::patterns::{NOISE_KK, NOISE_NNPSK2, NOISE_XX};
+use disco_rs::patterns::{NOISE_KK, NOISE_NN, NOISE_NNPSK2, NOISE_XX};
 use disco_rs::x25519::{PublicKey, StaticSecret};
 use disco_rs::SessionBuilder;
 use ed25519_dalek as ed25519;
+
+#[test]
+fn test_nn_session() {
+    let mut session1 = SessionBuilder::new(NOISE_NN).build_initiator();
+    let mut session2 = SessionBuilder::new(NOISE_NN).build_responder();
+
+    println!("-> e");
+    let ct = session1.write_message(&[]);
+    session2.read_message(&ct).unwrap();
+
+    println!("<- e ee");
+    let ct = session2.write_message(&[]);
+    session1.read_message(&ct).unwrap();
+
+    let mut session1 = session1.into_transport_mode();
+    let mut session2 = session2.into_transport_mode();
+
+    println!("->");
+    let ct = session1.write_message(b"hello");
+    let pt = session2.read_message(&ct).unwrap();
+    assert_eq!(&pt, b"hello");
+}
 
 #[test]
 fn test_kk_session() {

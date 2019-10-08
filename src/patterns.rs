@@ -87,6 +87,16 @@ pub const NOISE_X: HandshakePattern = HandshakePattern {
 
 // 7.3 - Interactive pats
 
+/// Neither the client or the server are authenticated.
+pub const NOISE_NN: HandshakePattern = HandshakePattern {
+    name: "NN",
+    pre_message_patterns: PreMessagePatternPair {
+        initiator: &[],
+        responder: &[],
+    },
+    message_patterns: &[&[Token::E], &[Token::E, Token::EE]],
+};
+
 /// Both the client static key and the server static key are known.
 pub const NOISE_KK: HandshakePattern = HandshakePattern {
     name: "KK",
