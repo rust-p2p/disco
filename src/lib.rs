@@ -14,4 +14,6 @@ mod transport_state;
 pub use builder::SessionBuilder;
 pub use constants::MAX_MSG_LEN;
 pub use handshake_state::ReadError;
+pub use stateless_transport_state::StatelessTransportState;
+pub use transport_state::TransportState;
 pub use x25519_dalek as x25519;
