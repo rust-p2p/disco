@@ -1,7 +1,6 @@
 // Most tests in this file were translated from symmetric_tests.go in StrobeGo
 
-extern crate disco_rs;
-use disco_rs::symmetric::{self, AuthCiphertext, AuthPlaintext, DiscoHash};
+use disco::symmetric::{self, AuthCiphertext, AuthPlaintext, DiscoHash};
 
 #[test]
 fn test_known_hash() {

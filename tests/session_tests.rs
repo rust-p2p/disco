@@ -1,6 +1,6 @@
-use disco_rs::ed25519;
-use disco_rs::x25519::{PublicKey, StaticSecret};
-use disco_rs::SessionBuilder;
+use disco::ed25519;
+use disco::x25519::{PublicKey, StaticSecret};
+use disco::SessionBuilder;
 
 #[test]
 fn test_nn_session() {

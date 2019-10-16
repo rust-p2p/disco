@@ -80,8 +80,7 @@ impl AuthCiphertext {
 ///
 /// Input is streamed in, meaning that
 /// ```rust
-/// # extern crate disco_rs;
-/// # use disco_rs::symmetric::DiscoHash;
+/// # use disco::symmetric::DiscoHash;
 /// # fn main() {
 /// # let mut h = DiscoHash::new(32);
 /// h.write(b"foo bar");
@@ -89,8 +88,7 @@ impl AuthCiphertext {
 /// ```
 /// is equivalent to
 /// ```rust
-/// # extern crate disco_rs;
-/// # use disco_rs::symmetric::DiscoHash;
+/// # use disco::symmetric::DiscoHash;
 /// # fn main() {
 /// # let mut h = DiscoHash::new(32);
 /// h.write(b"foo");

@@ -1,4 +1,4 @@
-use disco_rs::{ReadError, SessionBuilder};
+use disco::{ReadError, SessionBuilder};
 use std::io::{Error as IoError, Read, Write};
 use std::net::{TcpListener, TcpStream};
 
