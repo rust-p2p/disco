@@ -12,12 +12,13 @@ failure = "0.1"
 rand = "0.7.2"
 strobe-rs = "0.5.2"
 
+[dependencies.ed25519-dalek]
+git = "https://github.com/dvc94ch/ed25519-dalek"
+branch = "update-rand"
+
 [dependencies.x25519-dalek]
 version = "0.5.2"
 default-features = false
 features = ["u64_backend"]
 git = "https://github.com/dvc94ch/x25519-dalek"
 branch = "update-rand"
-
-[dev-dependencies]
-ed25519-dalek = { git = "https://github.com/dvc94ch/ed25519-dalek", branch = "update-rand" }

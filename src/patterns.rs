@@ -24,6 +24,7 @@ pub enum Token {
     SS,
     EE,
     Psk,
+    Sig,
 }
 
 pub type MessagePattern = &'static [Token];
@@ -71,7 +72,29 @@ pub enum HandshakePattern {
     IK,
     IX,
     // 7.6. Interactive handshake patterns (deferred)
-    // TODO
+    NK1,
+    NX1,
+    X1N,
+    X1K,
+    XK1,
+    X1K1,
+    X1X,
+    XX1,
+    X1X1,
+    K1N,
+    K1K,
+    KK1,
+    K1K1,
+    K1X,
+    KX1,
+    K1X1,
+    I1N,
+    I1K,
+    IK1,
+    I1K1,
+    I1X,
+    IX1,
+    I1X1,
 }
 
 impl HandshakePattern {
@@ -129,6 +152,29 @@ impl HandshakePattern {
             IN => tokens::IN,
             IK => tokens::IK,
             IX => tokens::IX,
+            NK1 => tokens::NK1,
+            NX1 => tokens::NX1,
+            X1N => tokens::X1N,
+            X1K => tokens::X1K,
+            XK1 => tokens::XK1,
+            X1K1 => tokens::X1K1,
+            X1X => tokens::X1X,
+            XX1 => tokens::XX1,
+            X1X1 => tokens::X1X1,
+            K1N => tokens::K1N,
+            K1K => tokens::K1K,
+            KK1 => tokens::KK1,
+            K1K1 => tokens::K1K1,
+            K1X => tokens::K1X,
+            KX1 => tokens::KX1,
+            K1X1 => tokens::K1X1,
+            I1N => tokens::I1N,
+            I1K => tokens::I1K,
+            IK1 => tokens::IK1,
+            I1K1 => tokens::I1K1,
+            I1X => tokens::I1X,
+            IX1 => tokens::IX1,
+            I1X1 => tokens::I1X1,
         }
     }
 }
@@ -153,6 +199,29 @@ impl FromStr for HandshakePattern {
             "IN" => Ok(IN),
             "IK" => Ok(IK),
             "IX" => Ok(IX),
+            "NK1" => Ok(NK1),
+            "NX1" => Ok(NX1),
+            "X1N" => Ok(X1N),
+            "X1K" => Ok(X1K),
+            "XK1" => Ok(XK1),
+            "X1K1" => Ok(X1K1),
+            "X1X" => Ok(X1X),
+            "XX1" => Ok(XX1),
+            "X1X1" => Ok(X1X1),
+            "K1N" => Ok(K1N),
+            "K1K" => Ok(K1K),
+            "KK1" => Ok(KK1),
+            "K1K1" => Ok(K1K1),
+            "K1X" => Ok(K1X),
+            "KX1" => Ok(KX1),
+            "K1X1" => Ok(K1X1),
+            "I1N" => Ok(I1N),
+            "I1K" => Ok(I1K),
+            "IK1" => Ok(IK1),
+            "I1K1" => Ok(I1K1),
+            "I1X" => Ok(I1X),
+            "IX1" => Ok(IX1),
+            "I1X1" => Ok(I1X1),
             _ => Err(PatternError::UnsupportedHandshakeType),
         }
     }
@@ -160,14 +229,17 @@ impl FromStr for HandshakePattern {
 
 /// A modifier applied to the base pattern as defined in the Noise spec.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum HandshakeModifier {
+enum Modifier {
     /// Insert a PSK to mix at the associated position.
     Psk(u8),
     /// Modify the base pattern to its "fallback" form.
     Fallback,
+    /// Modify the base pattern to its "sig" form. See the noise signature
+    /// extension for more information.
+    Sig,
 }
 
-impl FromStr for HandshakeModifier {
+impl FromStr for Modifier {
     type Err = PatternError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -176,28 +248,45 @@ impl FromStr for HandshakeModifier {
             Ok(Self::Psk(n))
         } else if s == "fallback" {
             Ok(Self::Fallback)
+        } else if s == "sig" {
+            Ok(Self::Sig)
         } else {
             Err(PatternError::UnsupportedModifier)
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct HandshakeModifierList(Vec<HandshakeModifier>);
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct HandshakeModifiers {
+    psks: Vec<u8>,
+    fallback: bool,
+    sig: bool,
+}
 
-impl FromStr for HandshakeModifierList {
+impl FromStr for HandshakeModifiers {
     type Err = PatternError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() {
-            Ok(Self(vec![]))
+            Ok(Self::default())
         } else {
             let modifier_names = s.split('+');
-            let mut modifiers = vec![];
+            let mut psks = vec![];
+            let mut fallback = false;
+            let mut sig = false;
             for modifier_name in modifier_names {
-                modifiers.push(modifier_name.parse()?);
+                let modifier = modifier_name.parse()?;
+                match modifier {
+                    Modifier::Psk(n) => psks.push(n),
+                    Modifier::Fallback => fallback = true,
+                    Modifier::Sig => sig = true,
+                }
             }
-            Ok(Self(modifiers))
+            Ok(Self {
+                psks,
+                fallback,
+                sig,
+            })
         }
     }
 }
@@ -208,7 +297,7 @@ impl FromStr for HandshakeModifierList {
 pub struct Handshake {
     name: String,
     pattern: HandshakePattern,
-    modifiers: HandshakeModifierList,
+    modifiers: HandshakeModifiers,
 }
 
 impl Handshake {
@@ -236,46 +325,53 @@ impl Handshake {
 
     /// Returns the number of psks used in the handshake.
     pub fn number_of_psks(&self) -> usize {
-        self.modifiers
-            .0
-            .iter()
-            .filter(|modifier| {
-                if let HandshakeModifier::Psk(_) = modifier {
-                    return true;
-                }
-                false
-            })
-            .count()
+        self.modifiers.psks.len()
     }
 
     /// Whether the pattern has a fallback modifier.
-    #[allow(unused)]
     pub fn is_fallback(&self) -> bool {
-        self.modifiers
-            .0
-            .iter()
-            .find(|modifier| {
-                if let HandshakeModifier::Fallback = modifier {
-                    return true;
-                }
-                false
-            })
-            .is_some()
+        self.modifiers.fallback
+    }
+
+    /// Wheather the pattern has a sig modifier.
+    pub fn is_sig(&self) -> bool {
+        self.modifiers.sig
     }
 
     /// Returns the tokens of a handshake pattern.
     pub fn tokens(&self) -> (&'static [Token], &'static [Token], Vec<Vec<Token>>) {
         let base = self.pattern.tokens();
         let mut handshake: Vec<Vec<Token>> = base.handshake.iter().map(|p| p.to_vec()).collect();
-        for modifier in self.modifiers.0.iter() {
-            if let HandshakeModifier::Psk(n) = modifier {
-                if *n == 0 {
-                    handshake[0 as usize].insert(0, Token::Psk);
-                } else {
-                    handshake[*n as usize - 1].push(Token::Psk);
-                }
+        for n in self.modifiers.psks.iter() {
+            if *n == 0 {
+                handshake[0 as usize].insert(0, Token::Psk);
+            } else {
+                handshake[*n as usize - 1].push(Token::Psk);
             }
         }
+
+        if self.modifiers.sig {
+            handshake = handshake
+                .into_iter()
+                .enumerate()
+                .map(|(i, tokens)| {
+                    let replace = if i % 2 == 1 { Token::ES } else { Token::SE };
+                    let forbidden = if i % 2 == 0 { Token::ES } else { Token::SE };
+                    tokens
+                        .into_iter()
+                        .map(|token| {
+                            assert!(token != forbidden);
+                            if token == replace {
+                                Token::Sig
+                            } else {
+                                token
+                            }
+                        })
+                        .collect()
+                })
+                .collect();
+        }
+
         (base.initiator, base.responder, handshake)
     }
 }
@@ -437,5 +533,214 @@ mod tokens {
         ...
         [E, S],
         [E, EE, SE, S, ES],
+    });
+
+    pattern!(NK1 {
+        [],
+        [S],
+        ...
+        [E],
+        [E, EE, ES],
+    });
+
+    pattern!(NX1 {
+        [],
+        [],
+        ...
+        [E],
+        [E, EE, S],
+        [ES],
+    });
+
+    pattern!(X1N {
+        [],
+        [],
+        ...
+        [E],
+        [E, EE],
+        [S],
+        [SE],
+    });
+
+    pattern!(X1K {
+        [],
+        [S],
+        ...
+        [E, ES],
+        [E, EE],
+        [S],
+        [SE],
+    });
+
+    pattern!(XK1 {
+        [],
+        [S],
+        ...
+        [E],
+        [E, EE, ES],
+        [S, ES],
+    });
+
+    pattern!(X1K1 {
+        [],
+        [S],
+        ...
+        [E],
+        [E, EE, ES],
+        [S],
+        [SE],
+    });
+
+    pattern!(X1X {
+        [],
+        [],
+        ...
+        [S],
+        [E, EE, S, ES],
+        [S],
+        [SE],
+    });
+
+    pattern!(XX1 {
+        [],
+        [],
+        ...
+        [E],
+        [E, EE, S],
+        [ES, S, SE],
+    });
+
+    pattern!(X1X1 {
+        [],
+        [],
+        ...
+        [E],
+        [E, EE, S],
+        [ES, S],
+        [SE],
+    });
+
+    pattern!(K1N {
+        [S],
+        [],
+        ...
+        [E],
+        [E, EE],
+        [SE],
+    });
+
+    pattern!(K1K {
+        [S],
+        [S],
+        ...
+        [E, ES],
+        [E, EE],
+        [SE],
+    });
+
+    pattern!(KK1 {
+        [S],
+        [S],
+        ...
+        [E],
+        [E, EE, SE, ES],
+    });
+
+    pattern!(K1K1 {
+        [S],
+        [S],
+        ...
+        [E],
+        [E, EE, ES],
+        [SE],
+    });
+
+    pattern!(K1X {
+        [S],
+        [],
+        ...
+        [E],
+        [E, EE, S, ES],
+        [SE],
+    });
+
+    pattern!(KX1 {
+        [S],
+        [],
+        ...
+        [E],
+        [E, EE, SE, S],
+        [ES],
+    });
+
+    pattern!(K1X1 {
+        [S],
+        [],
+        ...
+        [E],
+        [E, EE, S],
+        [SE, ES],
+    });
+
+    pattern!(I1N {
+        [],
+        [],
+        ...
+        [E, S],
+        [E, EE],
+        [SE],
+    });
+
+    pattern!(I1K {
+        [],
+        [S],
+        ...
+        [E, ES, S],
+        [E, EE],
+        [SE],
+    });
+
+    pattern!(IK1 {
+        [],
+        [S],
+        ...
+        [E, S],
+        [E, EE, SE, ES],
+    });
+
+    pattern!(I1K1 {
+        [],
+        [S],
+        ...
+        [E, S],
+        [E, EE, ES],
+        [SE],
+    });
+
+    pattern!(I1X {
+        [],
+        [],
+        ...
+        [E, S],
+        [E, EE, S, ES],
+        [SE],
+    });
+
+    pattern!(IX1 {
+        [],
+        [],
+        ...
+        [E, S],
+        [E, EE, SE, E],
+        [ES],
+    });
+
+    pattern!(I1X1 {
+        [],
+        [],
+        ...
+        [E, S],
+        [E, EE, S],
+        [SE, ES],
     });
 }

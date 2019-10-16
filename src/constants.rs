@@ -2,6 +2,7 @@
 pub const KEY_LEN: usize = 32;
 pub const DH_LEN: usize = 32;
 pub const NONCE_LEN: usize = 24;
+pub const SIG_LEN: usize = 64;
 
 /// Tag length defined in the Noise specification.
 pub const TAG_LEN: usize = 16;

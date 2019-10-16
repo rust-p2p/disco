@@ -1,12 +1,12 @@
 use crate::constants::KEY_LEN;
 use crate::handshake_state::HandshakeState;
+use crate::keypair::{PublicKey, SecretKey};
 use crate::patterns::{Handshake, Role};
-use x25519_dalek::{PublicKey, StaticSecret};
 
 /// Session builder.
 pub struct SessionBuilder {
     handshake: Handshake,
-    secret: Option<StaticSecret>,
+    secret: Option<SecretKey>,
     remote_public: Option<PublicKey>,
     prologue: Option<Vec<u8>>,
     psks: Vec<[u8; KEY_LEN]>,
@@ -26,14 +26,14 @@ impl SessionBuilder {
     }
 
     /// Static secret for the peer.
-    pub fn secret(mut self, secret: StaticSecret) -> Self {
-        self.secret = Some(secret);
+    pub fn secret<T: Into<SecretKey>>(mut self, secret: T) -> Self {
+        self.secret = Some(secret.into());
         self
     }
 
     /// The remote peer's static public key.
-    pub fn remote_public(mut self, public: PublicKey) -> Self {
-        self.remote_public = Some(public);
+    pub fn remote_public<T: Into<PublicKey>>(mut self, public: T) -> Self {
+        self.remote_public = Some(public.into());
         self
     }
 
@@ -63,11 +63,19 @@ impl SessionBuilder {
     /// Builds a session.
     fn build(mut self, role: Role) -> HandshakeState {
         if self.handshake.pattern().needs_local_static_key(role) {
-            assert!(self.secret.is_some());
+            match self.secret {
+                Some(SecretKey::Ed25519(_)) => assert!(self.handshake.is_sig()),
+                Some(SecretKey::X25519(_)) => assert!(!self.handshake.is_sig()),
+                None => panic!(),
+            }
         }
 
         if self.handshake.pattern().needs_known_remote_pubkey(role) {
-            assert!(self.remote_public.is_some());
+            match self.remote_public {
+                Some(PublicKey::Ed25519(_)) => assert!(self.handshake.is_sig()),
+                Some(PublicKey::X25519(_)) => assert!(!self.handshake.is_sig()),
+                None => panic!(),
+            }
         }
 
         assert!(self.handshake.number_of_psks() == self.psks.len());

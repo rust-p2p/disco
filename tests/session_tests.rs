@@ -1,6 +1,6 @@
+use disco_rs::ed25519;
 use disco_rs::x25519::{PublicKey, StaticSecret};
 use disco_rs::SessionBuilder;
-use ed25519_dalek as ed25519;
 
 #[test]
 fn test_nn_session() {
@@ -108,13 +108,13 @@ fn test_xx_session() {
     println!("<- e ee s es");
     let ct = session2.write_message(&proof2.to_bytes()[..]);
     let proof2 = session1.read_message(&ct).expect("pt");
-    let public2 = session1.get_remote_static().expect("s");
+    let public2 = session1.get_remote_static().expect("s").x25519();
     assert!(verifier.verify(public2, &proof2));
 
     println!("-> s se");
     let ct = session1.write_message(&proof1.to_bytes()[..]);
     let proof1 = session2.read_message(&ct).expect("pt");
-    let public1 = session2.get_remote_static().expect("s");
+    let public1 = session2.get_remote_static().expect("s").x25519();
     assert!(verifier.verify(public1, &proof1));
 
     let mut session1 = session1.into_transport_mode();
@@ -156,6 +156,45 @@ fn test_nnpsk2_session() {
     session2.rekey_incoming();
 
     println!("->");
+    let ct = session1.write_message(b"hello");
+    let pt = session2.read_message(&ct).expect("pt");
+    assert_eq!(&pt, b"hello");
+}
+
+#[test]
+fn test_k1k1sig_session() {
+    let key1 = ed25519::Keypair::generate(&mut rand::rngs::OsRng);
+    let pub1 = key1.public.clone();
+    let key2 = ed25519::Keypair::generate(&mut rand::rngs::OsRng);
+    let pub2 = key2.public.clone();
+    let mut session1 = SessionBuilder::new("K1K1sig")
+        .secret(key1)
+        .remote_public(pub2)
+        .build_initiator();
+    let mut session2 = SessionBuilder::new("K1K1sig")
+        .secret(key2)
+        .remote_public(pub1)
+        .build_responder();
+
+    println!("->");
+    let ct = session1.write_message(&[]);
+    let pt = session2.read_message(&ct).unwrap();
+    assert_eq!(&pt, &[]);
+
+    println!("<-");
+    let ct = session2.write_message(&[]);
+    let pt = session1.read_message(&ct).unwrap();
+    assert_eq!(&pt, &[]);
+
+    println!("->");
+    let ct = session1.write_message(&[]);
+    let pt = session2.read_message(&ct).unwrap();
+    assert_eq!(&pt, &[]);
+
+    let mut session1 = session1.into_transport_mode();
+    let mut session2 = session2.into_transport_mode();
+
+    println!("<-");
     let ct = session1.write_message(b"hello");
     let pt = session2.read_message(&ct).expect("pt");
     assert_eq!(&pt, b"hello");

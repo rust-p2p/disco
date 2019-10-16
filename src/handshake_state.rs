@@ -1,10 +1,10 @@
 //! Implementation of the HandshakeState.
-use crate::constants::{DH_LEN, KEY_LEN, MAX_MSG_LEN, TAG_LEN};
+use crate::constants::{DH_LEN, KEY_LEN, MAX_MSG_LEN, SIG_LEN, TAG_LEN};
+use crate::keypair::{KeyPair, PublicKey, SecretKey, Signature};
 use crate::patterns::{Handshake, Role, Token};
 use crate::stateless_transport_state::StatelessTransportState;
 use crate::symmetric_state::SymmetricState;
 use crate::transport_state::TransportState;
-use crate::x25519::{PublicKey, SharedSecret, StaticSecret};
 use core::ops::{Deref, DerefMut};
 use failure::Fail;
 use std::collections::VecDeque;
@@ -19,6 +19,9 @@ pub enum ReadError {
     /// Message authentication failed.
     #[fail(display = "Invalid mac")]
     AuthError,
+    /// Invalid signature.
+    #[fail(display = "Invalid signature")]
+    SignatureError,
 }
 
 impl From<strobe_rs::AuthError> for ReadError {
@@ -27,36 +30,17 @@ impl From<strobe_rs::AuthError> for ReadError {
     }
 }
 
+impl From<crate::ed25519::SignatureError> for ReadError {
+    fn from(_: crate::ed25519::SignatureError) -> Self {
+        Self::SignatureError
+    }
+}
+
 /// The state of the handshake process.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Turn {
     Read,
     Write,
-}
-
-struct KeyPair {
-    secret: StaticSecret,
-    public: PublicKey,
-}
-
-impl KeyPair {
-    fn new(secret: StaticSecret) -> Self {
-        let public = PublicKey::from(&secret);
-        Self { secret, public }
-    }
-
-    fn generate() -> Self {
-        let secret = StaticSecret::new(&mut rand::rngs::OsRng);
-        Self::new(secret)
-    }
-
-    fn dh(&self, public: &PublicKey) -> SharedSecret {
-        self.secret.clone().diffie_hellman(public)
-    }
-
-    fn public(&self) -> &PublicKey {
-        &self.public
-    }
 }
 
 pub struct PanicOption<T>(Option<T>);
@@ -105,6 +89,11 @@ pub struct HandshakeState {
     psks: Vec<[u8; KEY_LEN]>,
     /// Is a oneway pattern.
     oneway: bool,
+    /// Is a signature pattern.
+    sig: bool,
+    #[allow(unused)]
+    /// Is a fallback pattern.
+    fallback: bool,
 }
 
 impl HandshakeState {
@@ -113,8 +102,8 @@ impl HandshakeState {
         handshake: Handshake,
         role: Role,
         prologue: &[u8],
-        s: Option<StaticSecret>,
-        e: Option<StaticSecret>,
+        s: Option<SecretKey>,
+        e: Option<SecretKey>,
         rs: Option<PublicKey>,
         re: Option<PublicKey>,
         psks: Vec<[u8; KEY_LEN]>,
@@ -126,6 +115,8 @@ impl HandshakeState {
         let (initiator, responder, message_pattern) = handshake.tokens();
         let message_patterns = VecDeque::from(message_pattern);
         let oneway = handshake.pattern().is_oneway();
+        let sig = handshake.is_sig();
+        let fallback = handshake.is_fallback();
         let turn = match role {
             Role::Initiator => Turn::Write,
             Role::Responder => Turn::Read,
@@ -148,6 +139,8 @@ impl HandshakeState {
             turn,
             psks,
             oneway,
+            sig,
+            fallback,
         };
 
         h.initialize(initiator, responder);
@@ -212,7 +205,7 @@ impl HandshakeState {
         for token in pattern {
             match token {
                 Token::E => {
-                    let e = KeyPair::generate();
+                    let e = KeyPair::ephemeral();
                     message.extend_from_slice(e.public().as_bytes());
                     self.symmetric_state.mix_hash(e.public().as_bytes());
                     if self.psks.len() > 0 {
@@ -257,6 +250,13 @@ impl HandshakeState {
                     let psk = self.psks.pop().unwrap();
                     self.symmetric_state.mix_key_and_hash(&psk[..]);
                 }
+
+                Token::Sig => {
+                    let hash = self.get_handshake_hash();
+                    let sig = self.s.sign(&hash);
+                    let ct = self.symmetric_state.encrypt_and_hash(&sig.to_bytes()[..]);
+                    message.extend(ct);
+                }
             }
         }
 
@@ -294,7 +294,7 @@ impl HandshakeState {
                     if self.psks.len() > 0 {
                         self.symmetric_state.mix_key(&e);
                     }
-                    self.re = PanicOption(Some(PublicKey::from(e)));
+                    self.re = PanicOption(Some(PublicKey::ephemeral(e)));
                     i = i2;
                 }
 
@@ -311,7 +311,8 @@ impl HandshakeState {
                     let pt = self.symmetric_state.decrypt_and_hash(&message[i..i2])?;
                     let mut rs = [0u8; DH_LEN];
                     rs.copy_from_slice(&pt);
-                    self.rs = PanicOption(Some(PublicKey::from(rs)));
+                    let rs = PublicKey::static_key(rs, self.sig)?;
+                    self.rs = PanicOption(Some(rs));
                     i = i2;
                 }
 
@@ -344,6 +345,25 @@ impl HandshakeState {
                 Token::Psk => {
                     let psk = self.psks.pop().unwrap();
                     self.symmetric_state.mix_key_and_hash(&psk[..]);
+                }
+
+                Token::Sig => {
+                    let tag_size = if self.symmetric_state.has_key() {
+                        TAG_LEN
+                    } else {
+                        0
+                    };
+                    let i2 = i + SIG_LEN + tag_size;
+                    if i2 > message.len() {
+                        return Err(ReadError::InvalidMessage);
+                    }
+                    let hash = self.get_handshake_hash();
+                    let pt = self.symmetric_state.decrypt_and_hash(&message[i..i2])?;
+                    let mut sig = [0u8; SIG_LEN];
+                    sig.copy_from_slice(&pt);
+                    let sig = Signature::from_bytes(&sig[..])?;
+                    self.rs.verify(&hash, &sig)?;
+                    i = i2;
                 }
             }
         }
