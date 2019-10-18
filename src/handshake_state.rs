@@ -67,13 +67,13 @@ impl<T> DerefMut for PanicOption<T> {
 
 /// An object that encodes handshake state. This is the primary API for
 /// initiating Disco sessions.
-pub struct HandshakeState {
+pub struct HandshakeState<'a> {
     /// The SymmetricState object.
     symmetric_state: SymmetricState,
     /// The local static key pair.
-    s: PanicOption<KeyPair>,
+    s: PanicOption<KeyPair<'a>>,
     /// The local ephemeral key pair.
-    e: PanicOption<KeyPair>,
+    e: PanicOption<KeyPair<'a>>,
     /// The remote party's static public key.
     rs: PanicOption<PublicKey>,
     /// The remote party's ephemeral public key.
@@ -96,18 +96,18 @@ pub struct HandshakeState {
     fallback: bool,
 }
 
-impl HandshakeState {
+impl<'a> HandshakeState<'a> {
     /// Initializes the HandshakeState.
     pub(crate) fn new(
         handshake: Handshake,
         role: Role,
         prologue: &[u8],
-        s: Option<SecretKey>,
-        e: Option<SecretKey>,
+        s: Option<SecretKey<'a>>,
+        e: Option<SecretKey<'a>>,
         rs: Option<PublicKey>,
         re: Option<PublicKey>,
         psks: Vec<[u8; KEY_LEN]>,
-    ) -> HandshakeState {
+    ) -> HandshakeState<'a> {
         let protocol_name = format!("Noise_{}_25519_STROBEv{}", handshake.name(), STROBE_VERSION);
         let mut symmetric_state = SymmetricState::new(protocol_name.as_bytes());
         symmetric_state.mix_hash(prologue);

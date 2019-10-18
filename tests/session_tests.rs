@@ -168,11 +168,11 @@ fn test_k1k1sig_session() {
     let key2 = ed25519::Keypair::generate(&mut rand::rngs::OsRng);
     let pub2 = key2.public.clone();
     let mut session1 = SessionBuilder::new("K1K1sig")
-        .secret(key1)
+        .secret(&key1)
         .remote_public(pub2)
         .build_initiator();
     let mut session2 = SessionBuilder::new("K1K1sig")
-        .secret(key2)
+        .secret(&key2)
         .remote_public(pub1)
         .build_responder();
 

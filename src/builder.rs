@@ -4,15 +4,16 @@ use crate::keypair::{PublicKey, SecretKey};
 use crate::patterns::{Handshake, Role};
 
 /// Session builder.
-pub struct SessionBuilder {
+#[derive(Clone)]
+pub struct SessionBuilder<'a> {
     handshake: Handshake,
-    secret: Option<SecretKey>,
+    secret: Option<SecretKey<'a>>,
     remote_public: Option<PublicKey>,
     prologue: Option<Vec<u8>>,
     psks: Vec<[u8; KEY_LEN]>,
 }
 
-impl SessionBuilder {
+impl<'a> SessionBuilder<'a> {
     /// Creates a new config builder for a given handshake pattern and role.
     pub fn new(pattern: &str) -> Self {
         let handshake = pattern.parse().unwrap();
@@ -26,7 +27,7 @@ impl SessionBuilder {
     }
 
     /// Static secret for the peer.
-    pub fn secret<T: Into<SecretKey>>(mut self, secret: T) -> Self {
+    pub fn secret<T: Into<SecretKey<'a>>>(mut self, secret: T) -> Self {
         self.secret = Some(secret.into());
         self
     }
@@ -51,17 +52,17 @@ impl SessionBuilder {
     }
 
     /// Build an initiator session.
-    pub fn build_initiator(self) -> HandshakeState {
+    pub fn build_initiator(self) -> HandshakeState<'a> {
         self.build(Role::Initiator)
     }
 
     /// Build a responder session.
-    pub fn build_responder(self) -> HandshakeState {
+    pub fn build_responder(self) -> HandshakeState<'a> {
         self.build(Role::Responder)
     }
 
     /// Builds a session.
-    fn build(mut self, role: Role) -> HandshakeState {
+    fn build(mut self, role: Role) -> HandshakeState<'a> {
         if self.handshake.pattern().needs_local_static_key(role) {
             match self.secret {
                 Some(SecretKey::Ed25519(_)) => assert!(self.handshake.is_sig()),

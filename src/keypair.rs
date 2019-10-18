@@ -2,24 +2,25 @@ use crate::ed25519;
 pub use crate::ed25519::Signature;
 use crate::x25519;
 
-pub enum SecretKey {
-    Ed25519(ed25519::Keypair),
+#[derive(Clone)]
+pub enum SecretKey<'a> {
+    Ed25519(&'a ed25519::Keypair),
     X25519(x25519::StaticSecret),
 }
 
-impl From<ed25519::Keypair> for SecretKey {
-    fn from(pk: ed25519::Keypair) -> Self {
+impl<'a> From<&'a ed25519::Keypair> for SecretKey<'a> {
+    fn from(pk: &'a ed25519::Keypair) -> Self {
         Self::Ed25519(pk)
     }
 }
 
-impl From<x25519::StaticSecret> for SecretKey {
+impl<'a> From<x25519::StaticSecret> for SecretKey<'a> {
     fn from(pk: x25519::StaticSecret) -> Self {
         Self::X25519(pk)
     }
 }
 
-impl SecretKey {
+impl<'a> SecretKey<'a> {
     fn ed25519(&self) -> &ed25519::Keypair {
         match self {
             SecretKey::Ed25519(pair) => pair,
@@ -92,17 +93,17 @@ impl PublicKey {
     }
 }
 
-pub struct KeyPair {
-    secret: SecretKey,
+pub struct KeyPair<'a> {
+    secret: SecretKey<'a>,
     public: PublicKey,
 }
 
-impl KeyPair {
-    pub fn new<T: Into<SecretKey>>(secret: T) -> Self {
+impl<'a> KeyPair<'a> {
+    pub fn new<T: Into<SecretKey<'a>>>(secret: T) -> Self {
         let secret = secret.into();
-        let public = match &secret {
+        let public = match secret {
             SecretKey::Ed25519(pair) => pair.public.into(),
-            SecretKey::X25519(secret) => x25519::PublicKey::from(secret).into(),
+            SecretKey::X25519(ref secret) => x25519::PublicKey::from(secret).into(),
         };
         Self { secret, public }
     }
