@@ -578,7 +578,7 @@ mod tokens {
         ...
         [E],
         [E, EE, ES],
-        [S, ES],
+        [S, SE],
     });
 
     pattern!(X1K1 {
