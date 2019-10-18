@@ -15,16 +15,14 @@ impl StatelessTransportState {
     /// To avoid messages being replayed, the caller must ensure that the nonce
     /// is never reused, and that the outgoing channel is rekeyed if the nonce
     /// equals u64::MAX.
-    pub fn write_message(&self, nonce: u64, pt: &[u8]) -> Vec<u8> {
+    pub fn write_message(&self, nonce: u64, pt: &mut [u8]) -> [u8; TAG_LEN] {
         assert!(pt.len() < MAX_MSG_LEN - TAG_LEN);
         let mut tx = self.tx.clone();
         tx.ad(&nonce.to_be_bytes()[..], false);
-        let mut ct = Vec::with_capacity(pt.len() + TAG_LEN);
-        ct.extend_from_slice(pt);
-        tx.send_enc(&mut ct[..pt.len()], false);
-        ct.extend_from_slice(&[0u8; TAG_LEN]);
-        tx.send_mac(&mut ct[pt.len()..], false);
-        ct
+        tx.send_enc(pt, false);
+        let mut tag = [0u8; TAG_LEN];
+        tx.send_mac(&mut tag, false);
+        tag
     }
 
     /// Decrypts and authenticates a message using it's sequence number.
@@ -32,20 +30,14 @@ impl StatelessTransportState {
     /// To avoid messages being replayed, the caller must ensure that the nonce
     /// is never reused, and that the incoming channel is rekeyed if the nonce
     /// equals u64::MAX.
-    pub fn read_message(&self, nonce: u64, ct: &[u8]) -> Result<Vec<u8>, ReadError> {
+    pub fn read_message(&self, nonce: u64, ct: &mut [u8], tag: [u8; TAG_LEN]) -> Result<(), ReadError> {
         assert!(ct.len() < MAX_MSG_LEN);
-        if ct.len() < TAG_LEN {
-            return Err(ReadError::AuthError);
-        }
         let mut rx = self.rx.clone();
         rx.ad(&nonce.to_be_bytes()[..], false);
-        let pt_len = ct.len() - TAG_LEN;
-        let mut pt = Vec::with_capacity(pt_len);
-        pt.extend_from_slice(&ct[..pt_len]);
-        rx.recv_enc(&mut pt, false);
-        let mut mac = ct[pt_len..].to_vec();
-        rx.recv_mac(&mut mac, false)?;
-        Ok(pt)
+        rx.recv_enc(ct, false);
+        let mut mac = tag.clone();
+        rx.recv_mac(&mut mac[..], false)?;
+        Ok(())
     }
 
     /// Rekeys the incoming channel.
