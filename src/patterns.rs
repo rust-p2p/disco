@@ -333,7 +333,7 @@ impl Handshake {
         self.modifiers.fallback
     }
 
-    /// Wheather the pattern has a sig modifier.
+    /// Whether the pattern has a sig modifier.
     pub fn is_sig(&self) -> bool {
         self.modifiers.sig
     }

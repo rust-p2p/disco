@@ -128,6 +128,16 @@ impl DiscoHash {
         self.strobe_ctx.prf(&mut buf, false);
         buf
     }
+
+    /// Random byte arrays
+    #[inline]
+    pub fn random(output_len: usize) -> Vec<u8> {
+        assert!(output_len >= 32);
+        let mut buf = vec![0u8; output_len];
+        rand::thread_rng().fill_bytes(&mut buf);
+        buf
+    }
+    
 }
 
 /// Hashes an input of any length and obtain an output of length greater or equal to
