@@ -19,3 +19,4 @@ pub use handshake_state::ReadError;
 pub use stateless_transport_state::StatelessTransportState;
 pub use transport_state::TransportState;
 pub use x25519_dalek as x25519;
+pub use symmetric::DiscoHash;
