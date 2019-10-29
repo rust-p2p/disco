@@ -1,6 +1,6 @@
 //! Symmetric crypto primitives built with strobe.
 use crate::constants::{NONCE_LEN, TAG_LEN};
-use rand::{thread_rng, RngCore};
+use rand::{thread_rng, RngCore, rngs::OsRng};
 pub use strobe_rs::AuthError;
 use strobe_rs::{SecParam, Strobe};
 
@@ -132,12 +132,10 @@ impl DiscoHash {
     /// Random byte arrays
     #[inline]
     pub fn random(output_len: usize) -> Vec<u8> {
-        assert!(output_len >= 32);
         let mut buf = vec![0u8; output_len];
-        rand::thread_rng().fill_bytes(&mut buf);
+        OsRng.fill_bytes(&mut buf);
         buf
     }
-    
 }
 
 /// Hashes an input of any length and obtain an output of length greater or equal to
