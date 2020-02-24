@@ -31,7 +31,12 @@ impl StatelessTransportState {
     /// To avoid messages being replayed, the caller must ensure that the nonce
     /// is never reused, and that the incoming channel is rekeyed if the nonce
     /// equals u64::MAX.
-    pub fn read_message(&self, nonce: u64, ct: &mut [u8], tag: [u8; TAG_LEN]) -> Result<(), ReadError> {
+    pub fn read_message(
+        &self,
+        nonce: u64,
+        ct: &mut [u8],
+        tag: [u8; TAG_LEN],
+    ) -> Result<(), ReadError> {
         assert!(ct.len() < MAX_MSG_LEN);
         let mut rx = self.rx.clone();
         rx.ad(&nonce.to_be_bytes()[..], false);

@@ -1,6 +1,6 @@
 //! Symmetric crypto primitives built with strobe.
 use crate::constants::{NONCE_LEN, TAG_LEN};
-use rand::{thread_rng, RngCore, rngs::OsRng};
+use rand::{rngs::OsRng, thread_rng, RngCore};
 pub use strobe_rs::AuthError;
 use strobe_rs::{SecParam, Strobe};
 
