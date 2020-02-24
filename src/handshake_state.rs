@@ -1,40 +1,14 @@
 //! Implementation of the HandshakeState.
 use crate::constants::{DH_LEN, KEY_LEN, MAX_MSG_LEN, SIG_LEN, TAG_LEN};
+use crate::error::ReadError;
 use crate::keypair::{KeyPair, PublicKey, SecretKey, Signature};
 use crate::patterns::{Handshake, Role, Token};
 use crate::stateless_transport_state::StatelessTransportState;
 use crate::symmetric_state::SymmetricState;
 use crate::transport_state::TransportState;
 use core::ops::{Deref, DerefMut};
-use failure::Fail;
 use std::collections::VecDeque;
 use strobe_rs::{Strobe, STROBE_VERSION};
-
-/// Read error returned by `read_message`.
-#[derive(Debug, Fail)]
-pub enum ReadError {
-    /// Message is invalid.
-    #[fail(display = "Invalid message")]
-    InvalidMessage,
-    /// Message authentication failed.
-    #[fail(display = "Invalid mac")]
-    AuthError,
-    /// Invalid signature.
-    #[fail(display = "Invalid signature")]
-    SignatureError,
-}
-
-impl From<strobe_rs::AuthError> for ReadError {
-    fn from(_: strobe_rs::AuthError) -> Self {
-        Self::AuthError
-    }
-}
-
-impl From<crate::ed25519::SignatureError> for ReadError {
-    fn from(_: crate::ed25519::SignatureError) -> Self {
-        Self::SignatureError
-    }
-}
 
 /// The state of the handshake process.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

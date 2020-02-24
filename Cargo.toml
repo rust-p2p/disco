@@ -9,7 +9,6 @@ edition = "2018"
 
 [dependencies]
 ed25519-dalek = "1.0.0-pre.3"
-failure = "0.1.6"
 rand = "0.7.3"
 strobe-rs = "0.5.2"
 x25519-dalek = "0.6.0"

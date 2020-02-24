@@ -1,7 +1,7 @@
 //! This module contains the data pertaining to Noise handshake patterns. For more information on
 //! these patterns, consult the
 //! [Noise specification](https://noiseprotocol.org/noise.html#handshake-patterns).
-use failure::Fail;
+use crate::error::PatternError;
 use std::str::FromStr;
 use HandshakePattern::*;
 
@@ -36,17 +36,6 @@ pub struct HandshakeTokens {
     pub(crate) initiator: MessagePattern,
     pub(crate) responder: MessagePattern,
     pub(crate) handshake: &'static [MessagePattern],
-}
-
-/// Pattern error.
-#[derive(Debug, Fail)]
-pub enum PatternError {
-    #[fail(display = "Unsupported handshake type")]
-    UnsupportedHandshakeType,
-    #[fail(display = "Unsupported modifier")]
-    UnsupportedModifier,
-    #[fail(display = "Invalid psk")]
-    InvalidPsk,
 }
 
 /// The basic handshake patterns.
