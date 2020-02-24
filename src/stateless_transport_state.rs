@@ -41,7 +41,7 @@ impl StatelessTransportState {
         let mut rx = self.rx.clone();
         rx.ad(&nonce.to_be_bytes()[..], false);
         rx.recv_enc(ct, false);
-        let mut mac = tag.clone();
+        let mut mac = tag;
         rx.recv_mac(&mut mac[..], false)?;
         Ok(())
     }

@@ -88,7 +88,7 @@ pub enum HandshakePattern {
 
 impl HandshakePattern {
     /// If the protocol is one-way only.
-    pub fn is_oneway(&self) -> bool {
+    pub fn is_oneway(self) -> bool {
         match self {
             N | X | K => true,
             _ => false,
@@ -96,7 +96,7 @@ impl HandshakePattern {
     }
 
     /// Whether this pattern requires a long-term static key.
-    pub fn needs_local_static_key(&self, role: Role) -> bool {
+    pub fn needs_local_static_key(self, role: Role) -> bool {
         match role {
             Role::Initiator => match self {
                 N | NN | NK | NX => false,
@@ -110,7 +110,7 @@ impl HandshakePattern {
     }
 
     /// Whether this pattern demands a remote public key pre-message.
-    pub fn needs_known_remote_pubkey(&self, role: Role) -> bool {
+    pub fn needs_known_remote_pubkey(self, role: Role) -> bool {
         match role {
             Role::Initiator => match self {
                 N | K | X | NK | XK | KK | IK => true,
@@ -124,7 +124,7 @@ impl HandshakePattern {
     }
 
     /// Returns the tokens of a handshake.
-    pub fn tokens(&self) -> HandshakeTokens {
+    pub fn tokens(self) -> HandshakeTokens {
         match self {
             N => tokens::N,
             K => tokens::K,

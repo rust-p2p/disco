@@ -72,6 +72,7 @@ pub struct HandshakeState<'a> {
 
 impl<'a> HandshakeState<'a> {
     /// Initializes the HandshakeState.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         handshake: Handshake,
         role: Role,
@@ -182,7 +183,7 @@ impl<'a> HandshakeState<'a> {
                     let e = KeyPair::ephemeral();
                     message.extend_from_slice(e.public().as_bytes());
                     self.symmetric_state.mix_hash(e.public().as_bytes());
-                    if self.psks.len() > 0 {
+                    if !self.psks.is_empty() {
                         self.symmetric_state.mix_key(e.public().as_bytes());
                     }
                     self.e = PanicOption(Some(e));
@@ -265,7 +266,7 @@ impl<'a> HandshakeState<'a> {
                     let mut e = [0u8; DH_LEN];
                     e.copy_from_slice(&message[i..i2]);
                     self.symmetric_state.mix_hash(&e);
-                    if self.psks.len() > 0 {
+                    if !self.psks.is_empty() {
                         self.symmetric_state.mix_key(&e);
                     }
                     self.re = PanicOption(Some(PublicKey::ephemeral(e)));
@@ -384,7 +385,7 @@ impl<'a> HandshakeState<'a> {
 
     /// Checks if the handshake is finished.
     pub fn is_handshake_finished(&self) -> bool {
-        self.message_patterns.len() == 0
+        self.message_patterns.is_empty()
     }
 
     fn split(self, ratchet: bool) -> (PanicOption<Strobe>, PanicOption<Strobe>) {

@@ -81,19 +81,15 @@ impl AuthCiphertext {
 /// Input is streamed in, meaning that
 /// ```rust
 /// # use disco::symmetric::DiscoHash;
-/// # fn main() {
 /// # let mut h = DiscoHash::new(32);
 /// h.write(b"foo bar");
-/// # }
 /// ```
 /// is equivalent to
 /// ```rust
 /// # use disco::symmetric::DiscoHash;
-/// # fn main() {
 /// # let mut h = DiscoHash::new(32);
 /// h.write(b"foo");
 /// h.write(b" bar");
-/// # }
 /// ```
 #[derive(Clone)]
 pub struct DiscoHash {
@@ -111,7 +107,7 @@ impl DiscoHash {
         DiscoHash {
             strobe_ctx: Strobe::new(b"DiscoHash", SecParam::B128),
             initialized: false,
-            output_len: output_len,
+            output_len,
         }
     }
 
@@ -174,10 +170,7 @@ pub fn protect_integrity(key: &[u8], plaintext: Vec<u8>) -> AuthPlaintext {
     let mut mac = vec![0u8; TAG_LEN];
     s.send_mac(&mut mac, false);
 
-    AuthPlaintext {
-        pt: plaintext,
-        mac: mac,
-    }
+    AuthPlaintext { pt: plaintext, mac }
 }
 
 /// Unwraps an [`AuthPlaintext`](struct.AuthPlaintext.html) object and checks the MAC. On success,
@@ -211,7 +204,7 @@ pub fn encrypt(key: &[u8], mut plaintext: Vec<u8>) -> AuthCiphertext {
     let mut rng = thread_rng();
     let mut nonce = vec![0u8; NONCE_LEN];
     rng.fill_bytes(nonce.as_mut_slice());
-    s.ad(&mut nonce, false);
+    s.ad(&nonce, false);
 
     s.send_enc(&mut plaintext, false);
     let mut mac = vec![0u8; TAG_LEN];

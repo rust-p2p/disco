@@ -109,7 +109,7 @@ fn test_encryption_correctness() {
            things here?"[..],
     ];
 
-    for pt in plaintexts.into_iter().map(|s| s.to_vec()) {
+    for pt in plaintexts.iter().map(|s| s.to_vec()) {
         let auth_ct = symmetric::encrypt(&key, pt.clone());
         let decrypted = symmetric::decrypt(&key, auth_ct).expect("decrypt auth failed");
         assert_eq!(decrypted, pt);
